@@ -1165,6 +1165,7 @@ function downloadResponses() {
   text-align: left;
   vertical-align: top;
   overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 .resp tbody tr:last-child td {
   border-bottom: 0;
@@ -1259,6 +1260,7 @@ function downloadResponses() {
   margin: 6px 0 0;
   color: var(--verm);
   font-size: 13px;
+  white-space: pre-line;
 }
 .by {
   margin: 4px 0 0;

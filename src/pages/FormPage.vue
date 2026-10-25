@@ -281,6 +281,7 @@ h1 {
   color: var(--ink-2);
   font-size: 17px;
   line-height: 1.45;
+  white-space: pre-line;
 }
 .slip {
   display: grid;
@@ -296,6 +297,7 @@ h1 {
   color: var(--ink-2);
   font-size: 15px;
   line-height: 1.45;
+  white-space: pre-line;
 }
 .msg.err {
   color: var(--verm);

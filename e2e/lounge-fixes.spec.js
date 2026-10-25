@@ -356,3 +356,37 @@ test('notices expose their saved link and surface failed read updates', async ({
     'https://example.com/room'
   );
 });
+
+test('line breaks typed into event descriptions and notices survive on screen', async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date('2026-10-10T05:00:00Z') });
+  const notice = {
+    id: 'notice-lines',
+    title: 'Two lines',
+    body: 'First line.\nSecond line.',
+    starts_at: '2026-10-10T04:00:00Z',
+    posted_at: '2026-10-10T04:00:00Z',
+    read_at: null,
+  };
+  await mockSupabase(page, {
+    data: {
+      list_lounge_events: [eventRow({ description: 'Agenda:\n- Talk\n\n- Quiz' })],
+      list_my_notices: [notice],
+    },
+  });
+  await page.goto('/#/lounge?view=events');
+  await page.getByRole('tab', { name: /Past/ }).click();
+  await page.getByRole('button', { name: 'Boundary check', exact: true }).click();
+  // innerText follows the rendered layout, so collapsed newlines would read as spaces.
+  const desc = page.locator('.evd-desc');
+  await expect(desc).toBeVisible();
+  expect(await desc.evaluate((el) => el.innerText)).toBe('Agenda:\n- Talk\n\n- Quiz');
+
+  await page.goto('/#/lounge');
+  await page.getByRole('button', { name: /Notices/ }).click();
+  await page.locator('.nt-hit').click();
+  const body = page.locator('.nt-body p').first();
+  await expect(body).toBeVisible();
+  expect(await body.evaluate((el) => el.innerText)).toBe('First line.\nSecond line.');
+});

@@ -487,6 +487,7 @@ blockquote {
   background: color-mix(in srgb, var(--mari-soft) 55%, transparent);
   border-radius: 0 10px 10px 0;
   color: var(--ink-2);
+  white-space: pre-line;
   font-size: 14px;
   overflow-wrap: anywhere;
 }
@@ -520,6 +521,7 @@ blockquote {
 .history small {
   display: block;
   color: var(--ink-3);
+  white-space: pre-line;
 }
 .decision {
   margin-top: 22px;
@@ -537,6 +539,7 @@ blockquote {
   color: var(--mari-ink);
   border-radius: 10px;
   padding: 12px;
+  white-space: pre-line;
 }
 .empty {
   display: flex;
