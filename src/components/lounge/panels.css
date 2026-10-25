@@ -514,6 +514,7 @@
 :where(html.lounge-active) .pe-region-result p {
   margin: 0;
   overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 
 :where(html.lounge-active) .pe-cert {
@@ -937,6 +938,7 @@
 :where(html.lounge-active) .nt-body p {
   margin: 0;
   color: var(--t-2);
+  white-space: pre-line;
 }
 
 :where(html.lounge-active) .nt-body .nt-by {
