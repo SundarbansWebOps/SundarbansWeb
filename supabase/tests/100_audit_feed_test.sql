@@ -229,5 +229,20 @@ select throws_ok($$select public.export_event_records('ad1c0000-0000-4000-8000-0
 reset role;
 select is((select count(*)::int from public.audit_log where action='data.export' and actor_id='ad1c0000-0000-4000-8000-000000000005'), 0, 'a refused export writes no audit row');
 
+-- ── Names: full name, else Lounge name, else email ─────────────────────────
+update public.members set full_name = null, preferred_name = 'Feed lounge' where id = 'ad1c0000-0000-4000-8000-000000000002';
+update public.members set full_name = null, preferred_name = null where id = 'ad1c0000-0000-4000-8000-000000000005';
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"ad1c0000-0000-4000-8000-000000000001","role":"authenticated"}';
+select is((select array_agg(distinct r->>'actor_name') from jsonb_array_elements(public.admin_audit_feed(p_actor=>'ad1c0000-0000-4000-8000-000000000002', p_limit=>100)->'rows') r),
+ array['Feed lounge'], 'an actor with no full name shows their Lounge name, not Former member');
+select is((select r->>'subject_name' from jsonb_array_elements(public.admin_audit_feed(p_limit=>100)->'rows') r where (r->>'id')::bigint=(select id from ids where k='cert')),
+ '99f1930005@ds.study.iitm.ac.in', 'a subject with no name at all shows their email');
+select ok((select array_agg((r->>'id')::bigint) from jsonb_array_elements(public.admin_audit_feed(p_q=>'feed LOUNGE', p_from=>now(), p_limit=>100)->'rows') r) @> (select array_agg(id) from ids where k in ('rc','svc')),
+ 'p_q matches the Lounge name');
+select ok((select array_agg((r->>'id')::bigint) from jsonb_array_elements(public.admin_audit_feed(p_q=>'99f1930005@ds', p_from=>now(), p_limit=>100)->'rows') r) @> (select array_agg(id) from ids where k='cert'),
+ 'p_q matches part of an email');
+reset role;
+
 select * from finish();
 rollback;
