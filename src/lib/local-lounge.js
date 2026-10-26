@@ -77,6 +77,20 @@ const defaults = {
       community_id: 2,
       region_id: null,
       audience_cohorts: [],
+      entry_mode: 'register',
+      registration: null,
+    },
+    {
+      id: 'local-open-session',
+      name: 'Local open session',
+      starts_at: iso(48),
+      ends_at: iso(50),
+      stage: 'upcoming',
+      community_id: 3,
+      region_id: null,
+      audience_cohorts: [],
+      entry_mode: 'open',
+      gmail_link: 'https://example.invalid/open-meet',
       registration: null,
     },
     {
@@ -86,6 +100,7 @@ const defaults = {
       ends_at: iso(1),
       stage: 'live',
       region_id: 1,
+      entry_mode: 'open',
       meet_link: 'https://example.invalid/local-meet',
     },
     ...[1, 2].map((id) => ({

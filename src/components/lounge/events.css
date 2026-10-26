@@ -586,7 +586,8 @@
 }
 
 :where(html.lounge-active) .mark.m-registered,
-:where(html.lounge-active) .mark.m-attended {
+:where(html.lounge-active) .mark.m-attended,
+:where(html.lounge-active) .mark.m-open {
   border-color: color-mix(in srgb, var(--t-1) 55%, transparent);
   color: var(--t-1);
 }

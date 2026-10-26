@@ -183,6 +183,7 @@
                           <path d="m5 12.5 4.2 4L19 7" /></svg
                         >Registered
                       </span>
+                      <span v-else-if="isOpenSession(e)" class="mark m-open">Open to all</span>
                       <span v-else-if="!registrationOpen(e)" class="mark">
                         Registration closed
                       </span>
@@ -279,6 +280,7 @@ import {
   eventById,
   eventsTab,
   eventYear,
+  isOpenSession,
   isRegistered,
   markOf,
   mine,

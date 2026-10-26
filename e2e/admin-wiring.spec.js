@@ -128,6 +128,28 @@ test('event editor saves a draft, publishes, and shows the Future badge on the n
   expect(body.published_at).toBeUndefined();
   expect(body.audience_cohorts).toEqual(['27F1']);
   expect(body.attendance_mode).toBe('meet');
+  expect(body.entry_mode).toBe('register');
+});
+
+test('event editor saves an open session with no registration form', async ({ page }) => {
+  const eventId = 'e0000000-0000-4000-8000-000000000021';
+  const calls = await mockSupabase(page, {
+    as: 'sa',
+    data: { events: [{ id: eventId }] },
+  });
+  await page.goto('/#/admin?tab=events');
+  await page.getByRole('button', { name: 'New event' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Name').fill('House hour');
+  await pick(dialog, 'How members attend', 'Open to all — no form');
+  await expect(
+    dialog.getByText(
+      'Members join when it starts. No registration form. The Meet link stays in the Lounge.'
+    )
+  ).toBeVisible();
+  await dialog.getByRole('button', { name: 'Save draft' }).click();
+  const saved = await callTo(calls, '/rest/v1/events', 'POST');
+  expect(JSON.parse(saved.body)).toMatchObject({ name: 'House hour', entry_mode: 'open' });
 });
 
 test('form builder keeps field order, types, options and a post-submit invite', async ({

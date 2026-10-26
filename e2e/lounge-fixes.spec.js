@@ -132,6 +132,48 @@ test('scheduled stage follows the clock and cancellation disables member actions
   await expect(page.getByRole('link', { name: /Join on Meet/ })).toHaveCount(0);
 });
 
+test('an open session shows Open to all and ignores a linked form', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-10T03:00:00Z') });
+  const open = eventRow({
+    name: 'House hour',
+    starts_at: '2026-10-10T04:00:00Z',
+    ends_at: '2026-10-10T05:00:00Z',
+    stage: 'upcoming',
+    entry_mode: 'open',
+    registration: null,
+    attendance: null,
+  });
+  const closed = eventRow({
+    id: '31a00000-0000-4000-8000-000000000009',
+    name: 'Workshop',
+    starts_at: '2026-10-10T06:00:00Z',
+    ends_at: '2026-10-10T07:00:00Z',
+    stage: 'upcoming',
+    entry_mode: 'register',
+    registration: null,
+    attendance: null,
+  });
+  await mockSupabase(page, {
+    data: {
+      list_lounge_events: [open, closed],
+      list_lounge_forms: [
+        { id: FORM, event_id: open.id, is_open: true, accepting_responses: true, fields: [] },
+      ],
+    },
+  });
+  await page.goto('/#/lounge?view=events');
+  await page.getByRole('tab', { name: /Upcoming/ }).click();
+  const openRow = page.locator('.er').filter({ hasText: 'House hour' });
+  await expect(openRow).toContainText('Open to all');
+  await expect(openRow.getByRole('button', { name: /Register/ })).toHaveCount(0);
+  await expect(page.locator('.er').filter({ hasText: 'Workshop' })).toContainText(
+    'Registration closed'
+  );
+  await openRow.getByRole('button', { name: 'House hour', exact: true }).click();
+  await expect(page.getByText(/Open to all members/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Register', exact: true })).toHaveCount(0);
+});
+
 test('month-only archive dates keep their year and source text without inventing a day', async ({
   page,
 }) => {

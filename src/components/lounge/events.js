@@ -96,6 +96,7 @@ export const nextUp = computed(
       .sort((a, b) => a.starts_at.localeCompare(b.starts_at))[0] ?? null
 );
 
+export const isOpenSession = (e) => (e?.entry_mode || 'register') === 'open';
 export const isRegistered = (e) => !!e?.registration;
 // The registration row stays after an admin turns the registration down, so the marks read the
 // event form's review too: a rejected one never says "Registered".

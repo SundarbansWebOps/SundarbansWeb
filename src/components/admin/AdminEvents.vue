@@ -51,6 +51,7 @@
             <span v-else-if="isLive(e)" class="adm-badge mari">live now</span>
             <span v-if="e.certificates_released_at" class="adm-badge mari">certificates</span>
             <span v-if="e.is_public && !e.archive" class="adm-badge">public</span>
+            <span v-if="e.entry_mode === 'open'" class="adm-badge">open to all</span>
           </div>
         </div>
         <div class="adm-chips">
@@ -175,6 +176,14 @@
           </label>
           <small>Otherwise only its audience sees it in the Lounge until it ends.</small>
         </div>
+        <label class="adm-field wide">
+          <span>How members attend</span>
+          <AdminSelect v-model="form.entry_mode" :options="ENTRY_MODES" />
+          <small v-if="form.entry_mode === 'open'">
+            Members join when it starts. No registration form. The Meet link stays in the Lounge.
+          </small>
+          <small v-else>Link a form under Forms. Certificates need that registration.</small>
+        </label>
         <div class="adm-field wide">
           <span>Poster</span>
           <div class="poster">
@@ -232,8 +241,11 @@
           <span>Description</span>
           <textarea v-model.trim="form.description" class="adm-input" maxlength="4000" />
         </label>
-        <p class="adm-kicker wide certs-h">Certificates (optional)</p>
-        <label class="adm-field">
+        <p v-if="form.entry_mode === 'open'" class="adm-note wide">
+          Open sessions have no registration form, so they don't issue certificates.
+        </p>
+        <p v-else class="adm-kicker wide certs-h">Certificates (optional)</p>
+        <label v-if="form.entry_mode !== 'open'" class="adm-field">
           <span>Attendance</span>
           <AdminSelect
             v-model="form.attendance_mode"
@@ -241,7 +253,7 @@
             :disabled="!!form.certificates_released_at"
           />
         </label>
-        <label class="adm-field wide">
+        <label v-if="form.entry_mode !== 'open'" class="adm-field wide">
           <span>Certificate template URL</span>
           <input
             v-model.trim="form.certificate_template_url"
@@ -255,7 +267,10 @@
             poster.
           </small>
         </label>
-        <div v-if="form.id && !form.certificates_released_at" class="adm-field wide">
+        <div
+          v-if="form.entry_mode !== 'open' && form.id && !form.certificates_released_at"
+          class="adm-field wide"
+        >
           <span>Or upload a certificate template (not the poster)</span>
           <label
             class="adm-drop"
@@ -282,13 +297,20 @@
           <small>PNG, JPG or WebP, up to 10 MB. You can also drop the file onto the box.</small>
         </div>
         <label class="adm-field wide">
-          <span>Members' meeting link (optional)</span>
+          <span>{{
+            form.entry_mode === 'open'
+              ? "Members' meeting link"
+              : "Members' meeting link (optional)"
+          }}</span>
           <input
             v-model.trim="form.gmail_link"
             class="adm-input"
             type="url"
             placeholder="https://meet.google.com/…"
           />
+          <small v-if="form.entry_mode === 'open'">
+            Members see this in the Lounge when the session goes live. Public visitors do not.
+          </small>
         </label>
         <template v-if="isSuperAdmin && form.archive">
           <label class="adm-field">
@@ -553,6 +575,10 @@ const ATTENDANCE_MODES = [
   { value: 'meet', label: 'Google Meet (≥20 minutes)' },
   { value: 'reviewed', label: 'Reviewed list' },
 ];
+const ENTRY_MODES = [
+  { value: 'register', label: 'Register on a form' },
+  { value: 'open', label: 'Open to all — no form' },
+];
 const IMPORT_MODES = [
   { value: 'merge', label: 'Merge; keep omitted rows' },
   { value: 'replace', label: 'Replace one named source' },
@@ -667,6 +693,7 @@ function edit(e) {
       scope: e.community_id ? 'community' : e.region_id ? 'region' : 'house',
       archive: !!e.archive,
       is_public: !!e.is_public,
+      entry_mode: e.entry_mode === 'open' ? 'open' : 'register',
     };
   } else {
     form.value = {
@@ -676,6 +703,7 @@ function edit(e) {
       ends: toLocal(new Date(start.getTime() + 36e5)),
       audience_cohorts: [],
       attendance_mode: 'meet',
+      entry_mode: 'register',
       certificate_template_url: '',
       archive: false,
       is_public: false,
@@ -726,6 +754,10 @@ function friendly(e) {
   if (/cohort/.test(m))
     return 'Choose only available cohorts, including at most the next future one.';
   if (/events_image_cloudinary/.test(m)) return 'Posters must be uploaded here.';
+  if (/Open sessions do not take a registration form/.test(m))
+    return 'Open sessions do not take a registration form.';
+  if (/Remove the registration form before making this an open session/.test(m))
+    return 'Remove the registration form before making this an open session.';
   if (/waiting for/.test(m))
     return 'This event is waiting for a Super Admin; cancel the request to edit it.';
   if (e?.code === '42501') return 'You cannot change this event.';

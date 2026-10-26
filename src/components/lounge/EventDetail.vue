@@ -75,6 +75,10 @@
               {{ until(event.starts_at) }}.</span
             >
           </p>
+          <p v-else-if="isOpenSession(event)" class="evd-plain">
+            <b>Open to all members.</b> No registration. Join on Meet when it starts,
+            {{ until(event.starts_at) }}.
+          </p>
           <template v-else-if="regOpen">
             <button type="button" class="gp-btn is-big" @click="step = 'form'">Register</button>
             <p class="evd-small">Starts {{ until(event.starts_at) }}.</p>
@@ -177,6 +181,7 @@ import {
   certOf,
   commOf,
   endsIn,
+  isOpenSession,
   isRegistered,
   markOf,
   spanOf,
@@ -208,7 +213,10 @@ const mark = computed(() => markOf(props.event));
 const cert = computed(() => certOf(props.event));
 const regForm = computed(() => formByEvent(props.event.id));
 const regOpen = computed(
-  () => !!regForm.value && (regForm.value.accepting_responses ?? regForm.value.is_open ?? false)
+  () =>
+    !isOpenSession(props.event) &&
+    !!regForm.value &&
+    (regForm.value.accepting_responses ?? regForm.value.is_open ?? false)
 );
 /* An admin turned this registration down: it shows the reason and can be sent again. The
    registration itself stays listed wherever it already appears. */
@@ -217,6 +225,7 @@ const rejected = computed(() => reviewOf(regForm.value) === 'rejected');
 /* Already registered: never show the form again. */
 const step = ref(
   props.start === 'form' &&
+    !isOpenSession(props.event) &&
     (!isRegistered(props.event) || reviewOf(formByEvent(props.event.id)) === 'rejected') &&
     st.value === 'upcoming' &&
     formByEvent(props.event.id)

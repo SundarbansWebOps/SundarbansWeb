@@ -147,6 +147,7 @@
             <label v-if="form.scope === 'event'" class="adm-field">
               <span>Event</span>
               <AdminSelect v-model="form.event_id" :options="eventSelectOptions" />
+              <small>Open sessions do not take a form.</small>
             </label>
           </div>
         </section>
@@ -638,6 +639,7 @@ const eventOptions = computed(() => {
   const manageable = events.value.filter(canManageEvent);
   const eligible = manageable.filter(
     (event) =>
+      event.entry_mode !== 'open' &&
       !event.archive &&
       !event.cancelled_at &&
       event.published_at &&
@@ -814,7 +816,11 @@ function onScope() {
       : (form.value.community_id ?? props.lookups.communities[0]?.id);
   } else {
     form.value.region_id = form.value.community_id = null;
-    form.value.event_id ??= events.value[0]?.id ?? null;
+    const bindable = events.value.filter(
+      (event) => canManageEvent(event) && event.entry_mode !== 'open'
+    );
+    const current = events.value.find((event) => event.id === form.value.event_id);
+    if (!current || current.entry_mode === 'open') form.value.event_id = bindable[0]?.id ?? null;
   }
 }
 
@@ -909,7 +915,10 @@ async function save(mode) {
     await load();
     emit('changed');
   } catch (e) {
-    formError.value = errorText(e);
+    const m = e?.message ?? '';
+    formError.value = /Open sessions do not take a registration form/.test(m)
+      ? 'Open sessions do not take a registration form.'
+      : errorText(e);
   } finally {
     busy.value = false;
   }
