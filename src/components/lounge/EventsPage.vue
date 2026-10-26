@@ -272,6 +272,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import CREST from '../../assets/crest.webp';
 import EventDetail from './EventDetail.vue';
 import {
+  archiveSortValue,
   certificates,
   certOf,
   COMMUNITIES,
@@ -387,9 +388,16 @@ const lists = computed(() => {
     upcoming: by('upcoming').sort((a, b) =>
       String(a.starts_at || '').localeCompare(String(b.starts_at || ''))
     ),
-    past: by('past').sort((a, b) =>
-      String(b.starts_at || '').localeCompare(String(a.starts_at || ''))
-    ),
+    past: by('past').sort((a, b) => {
+      /* Archive dates win over raw starts_at: month-only events have no timestamp but still
+         belong under their year. Undated rows stay last. */
+      const ka = archiveSortValue(a);
+      const kb = archiveSortValue(b);
+      if (ka == null && kb == null) return String(a.name || '').localeCompare(String(b.name || ''));
+      if (ka == null) return 1;
+      if (kb == null) return -1;
+      return kb - ka;
+    }),
     mine: mine.value,
   };
 });
@@ -421,16 +429,23 @@ const counts = computed(() =>
 );
 const shown = computed(() => pick(lists.value[tab.value]));
 
-/* Past is long: group it by year. */
+/* Past is long: group it by year, newest year first and undated rows last. Bucketing (not
+   run-length grouping) keeps a year whole when its events interleave in the sorted list. */
 const groups = computed(() => {
   if (tab.value !== 'past') return [{ label: '', items: shown.value }];
-  const out = [];
+  const buckets = new Map();
   for (const e of shown.value) {
     const y = eventYear(e) == null ? 'Undated' : String(eventYear(e));
-    if (out.at(-1)?.label !== y) out.push({ label: y, items: [] });
-    out.at(-1).items.push(e);
+    if (!buckets.has(y)) buckets.set(y, []);
+    buckets.get(y).push(e);
   }
-  return out;
+  return [...buckets.entries()]
+    .sort(([a], [b]) => {
+      if (a === 'Undated') return 1;
+      if (b === 'Undated') return -1;
+      return Number(b) - Number(a);
+    })
+    .map(([label, items]) => ({ label, items }));
 });
 
 const commName = computed(() => (comm.value === 'all' ? '' : COMMUNITIES[comm.value].label));
