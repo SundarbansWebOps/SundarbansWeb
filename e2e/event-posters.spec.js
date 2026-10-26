@@ -18,6 +18,8 @@ test('an RC asks a Super Admin to publish a house-wide event', async ({ page }) 
   await page.getByLabel('Name', { exact: true }).fill('House fest');
   await pick(page, 'Scope', 'Whole house');
   await expect(page.getByText('A Super Admin approves house-wide events.')).toBeVisible();
+  await pick(page, 'Registration', 'No form');
+  await page.getByLabel("Members' meeting link").fill('https://meet.google.com/abc-defg-hij');
   await page.getByLabel('Public: also list it on the public Events page').check();
   await page.getByRole('button', { name: 'Ask a Super Admin to publish' }).click();
   await expect(page.getByRole('status')).toContainText('Sent to a Super Admin');

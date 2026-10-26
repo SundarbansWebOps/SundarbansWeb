@@ -62,7 +62,7 @@
       ref="dlg"
       wide
       :title="form.id ? 'Edit form' : 'New form'"
-      @close="form = null"
+      @close="onEditorClose"
     >
       <form :id="editorId" class="editor" @submit.prevent="save(false)">
         <p v-if="form.archived_at" class="adm-note">
@@ -86,11 +86,24 @@
           <div class="adm-form">
             <label class="adm-field wide">
               <span>Title</span>
-              <input v-model.trim="form.title" class="adm-input" required maxlength="200" />
+              <input
+                v-model.trim="form.title"
+                class="adm-input"
+                required
+                maxlength="200"
+                :disabled="eventCopyLock"
+              />
+              <small v-if="eventCopyLock">From the event. Edit it there.</small>
             </label>
             <label class="adm-field wide">
               <span>Description</span>
-              <textarea v-model.trim="form.description" class="adm-input" maxlength="4000" />
+              <textarea
+                v-model.trim="form.description"
+                class="adm-input"
+                maxlength="4000"
+                :disabled="eventCopyLock"
+              />
+              <small v-if="eventCopyLock">From the event. Edit it there.</small>
             </label>
           </div>
         </section>
@@ -104,7 +117,12 @@
             </label>
             <label class="adm-field">
               <span>Scope</span>
-              <AdminSelect v-model="form.scope" :options="scopeOptions" @change="onScope" />
+              <AdminSelect
+                v-model="form.scope"
+                :options="scopeOptions"
+                :disabled="eventBoundLock"
+                @change="onScope"
+              />
             </label>
             <label v-if="form.form_kind === 'group'" class="adm-field">
               <span>Group label</span>
@@ -146,7 +164,16 @@
             </label>
             <label v-if="form.scope === 'event'" class="adm-field">
               <span>Event</span>
-              <AdminSelect v-model="form.event_id" :options="eventSelectOptions" />
+              <AdminSelect
+                v-model="form.event_id"
+                :options="eventSelectOptions"
+                :disabled="eventBoundLock"
+              />
+              <small>{{
+                bindableEvents.length
+                  ? 'No-form events do not take a registration form.'
+                  : 'No event can take a form. No-form events do not take one.'
+              }}</small>
             </label>
           </div>
         </section>
@@ -500,7 +527,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, useId } from 'vue';
+import { computed, onMounted, reactive, ref, useId, watch } from 'vue';
 import AdminDialog from './AdminDialog.vue';
 import AdminSelect from './AdminSelect.vue';
 import AdminCohortSelect from './AdminCohortSelect.vue';
@@ -531,7 +558,7 @@ const props = defineProps({
   lookups: { type: Object, required: true },
   initialId: { type: String, default: null },
 });
-const emit = defineEmits(['changed']);
+const emit = defineEmits(['changed', 'navigate']);
 
 const TYPE_LABEL = {
   text: 'Short text',
@@ -586,7 +613,12 @@ const busy = ref(false);
 const error = ref('');
 const notice = ref('');
 const form = ref(null);
+const openedFromEvent = ref(null);
 const formError = ref('');
+const eventCopyLock = computed(() => form.value?.scope === 'event' && !!form.value?.event_id);
+const eventBoundLock = computed(
+  () => !!openedFromEvent.value || !!(form.value?.id && form.value.event_id)
+);
 const dlg = ref(null);
 const responsesFor = ref(null);
 const responses = ref([]);
@@ -634,20 +666,30 @@ const approvalScope = computed(
       (form.value?.scope === 'event' &&
         events.value.find((e) => e.id === form.value.event_id)?.community_id != null))
 );
-const eventOptions = computed(() => {
-  const manageable = events.value.filter(canManageEvent);
-  const eligible = manageable.filter(
+const bindableEvents = computed(() =>
+  events.value.filter(
     (event) =>
+      canManageEvent(event) &&
+      event.entry_mode !== 'open' &&
       !event.archive &&
       !event.cancelled_at &&
       event.published_at &&
       event.ends_at &&
       new Date(event.ends_at) > new Date()
-  );
-  const selected = manageable.find((event) => event.id === form.value?.event_id);
-  return selected && !eligible.some((event) => event.id === selected.id)
-    ? [selected, ...eligible]
-    : eligible;
+  )
+);
+const eventOptions = computed(() => {
+  const eligible = bindableEvents.value;
+  const selected = events.value.find((event) => event.id === form.value?.event_id);
+  if (
+    selected &&
+    canManageEvent(selected) &&
+    selected.entry_mode !== 'open' &&
+    !eligible.some((event) => event.id === selected.id)
+  ) {
+    return [selected, ...eligible];
+  }
+  return eligible;
 });
 const eventStatus = (event) => {
   if (!event.published_at) return 'draft';
@@ -758,6 +800,25 @@ defineExpose({
     const row = forms.value.find((r) => r.id === id);
     if (row) edit(row);
   },
+  openForEvent: async (event, formId) => {
+    openedFromEvent.value = event.id;
+    await load();
+    const existing =
+      forms.value.find((row) => row.id === formId) ||
+      forms.value.find((row) => row.event_id === event.id);
+    if (existing) {
+      edit(existing);
+      return;
+    }
+    edit();
+    form.value.title = event.name || '';
+    form.value.description = event.description || '';
+    form.value.scope = 'event';
+    form.value.event_id = event.id;
+    form.value.region_id = null;
+    form.value.community_id = null;
+    form.value.joins_community = false;
+  },
 });
 
 function edit(f) {
@@ -799,6 +860,26 @@ function edit(f) {
   }
 }
 
+watch(
+  () => form.value?.event_id,
+  (id) => {
+    if (!form.value || form.value.id || form.value.scope !== 'event' || !id) return;
+    const event = events.value.find((row) => row.id === id);
+    if (!event) return;
+    if (!form.value.title) form.value.title = event.name || '';
+    if (!form.value.description) form.value.description = event.description || '';
+  }
+);
+
+function onEditorClose() {
+  form.value = null;
+  if (openedFromEvent.value) {
+    const id = openedFromEvent.value;
+    openedFromEvent.value = null;
+    emit('navigate', 'events', id);
+  }
+}
+
 function onScope() {
   if (form.value.scope === 'house') {
     form.value.region_id = form.value.community_id = form.value.event_id = null;
@@ -814,7 +895,9 @@ function onScope() {
       : (form.value.community_id ?? props.lookups.communities[0]?.id);
   } else {
     form.value.region_id = form.value.community_id = null;
-    form.value.event_id ??= events.value[0]?.id ?? null;
+    const eligible = bindableEvents.value;
+    const current = eligible.find((event) => event.id === form.value.event_id);
+    form.value.event_id = current?.id ?? eligible[0]?.id ?? null;
   }
 }
 
@@ -866,8 +949,17 @@ function fieldPayload(field) {
 }
 
 async function save(mode) {
-  busy.value = true;
   formError.value = '';
+  if (form.value.scope === 'event') {
+    const bound = events.value.find((event) => event.id === form.value.event_id);
+    if (!form.value.event_id || bound?.entry_mode === 'open') {
+      formError.value = bindableEvents.value.length
+        ? 'Choose an event that takes a registration form.'
+        : 'Open sessions do not take a form.';
+      return;
+    }
+  }
+  busy.value = true;
   try {
     const published_at =
       mode === 'publish'
@@ -905,11 +997,21 @@ async function save(mode) {
       await saveForm(payload);
       notice.value = mode === 'publish' ? 'Published.' : 'Saved.';
     }
+    emit('changed');
+    if (openedFromEvent.value) {
+      const id = openedFromEvent.value;
+      openedFromEvent.value = null;
+      form.value = null;
+      emit('navigate', 'events', id);
+      return;
+    }
     dlg.value?.close();
     await load();
-    emit('changed');
   } catch (e) {
-    formError.value = errorText(e);
+    const m = e?.message ?? '';
+    formError.value = /Open sessions do not take a registration form/.test(m)
+      ? 'Open sessions do not take a registration form.'
+      : errorText(e);
   } finally {
     busy.value = false;
   }

@@ -51,6 +51,7 @@
             <span v-else-if="isLive(e)" class="adm-badge mari">live now</span>
             <span v-if="e.certificates_released_at" class="adm-badge mari">certificates</span>
             <span v-if="e.is_public && !e.archive" class="adm-badge">public</span>
+            <span v-if="e.entry_mode === 'open'" class="adm-badge">open to all</span>
           </div>
         </div>
         <div class="adm-chips">
@@ -175,6 +176,14 @@
           </label>
           <small>Otherwise only its audience sees it in the Lounge until it ends.</small>
         </div>
+        <label class="adm-field wide">
+          <span>Registration</span>
+          <AdminSelect v-model="form.entry_mode" :options="ENTRY_MODES" />
+          <small v-if="form.entry_mode === 'open'">
+            Members see Open to all. No Register button. The Meet link stays in the Lounge.
+          </small>
+          <small v-else>Members register on a form. Create or edit it below.</small>
+        </label>
         <div class="adm-field wide">
           <span>Poster</span>
           <div class="poster">
@@ -232,8 +241,11 @@
           <span>Description</span>
           <textarea v-model.trim="form.description" class="adm-input" maxlength="4000" />
         </label>
-        <p class="adm-kicker wide certs-h">Certificates (optional)</p>
-        <label class="adm-field">
+        <p v-if="form.entry_mode === 'open'" class="adm-note wide">
+          Open sessions have no registration form, so they don't issue certificates.
+        </p>
+        <p v-else class="adm-kicker wide certs-h">Certificates (optional)</p>
+        <label v-if="form.entry_mode !== 'open'" class="adm-field">
           <span>Attendance</span>
           <AdminSelect
             v-model="form.attendance_mode"
@@ -241,7 +253,7 @@
             :disabled="!!form.certificates_released_at"
           />
         </label>
-        <label class="adm-field wide">
+        <label v-if="form.entry_mode !== 'open'" class="adm-field wide">
           <span>Certificate template URL</span>
           <input
             v-model.trim="form.certificate_template_url"
@@ -255,7 +267,10 @@
             poster.
           </small>
         </label>
-        <div v-if="form.id && !form.certificates_released_at" class="adm-field wide">
+        <div
+          v-if="form.entry_mode !== 'open' && form.id && !form.certificates_released_at"
+          class="adm-field wide"
+        >
           <span>Or upload a certificate template (not the poster)</span>
           <label
             class="adm-drop"
@@ -282,14 +297,40 @@
           <small>PNG, JPG or WebP, up to 10 MB. You can also drop the file onto the box.</small>
         </div>
         <label class="adm-field wide">
-          <span>Members' meeting link (optional)</span>
+          <span>{{
+            form.entry_mode === 'open'
+              ? "Members' meeting link"
+              : "Members' meeting link (optional)"
+          }}</span>
           <input
             v-model.trim="form.gmail_link"
             class="adm-input"
             type="url"
             placeholder="https://meet.google.com/…"
           />
+          <small v-if="form.entry_mode === 'open'">
+            Members see this in the Lounge when the session goes live. Public visitors do not.
+          </small>
         </label>
+        <div v-if="form.entry_mode === 'register'" class="adm-field wide">
+          <span>Registration form</span>
+          <p v-if="boundForm" class="adm-note">
+            {{ boundForm.title }} · {{ boundForm.published_at ? 'published' : 'draft' }} ·
+            {{ formQuestionCount(boundForm) }} question{{
+              formQuestionCount(boundForm) === 1 ? '' : 's'
+            }}
+          </p>
+          <p v-else class="adm-note">No form yet.</p>
+          <button
+            type="button"
+            class="adm-btn ghost"
+            :disabled="busy || !form.name"
+            @click="openFormEditor"
+          >
+            {{ boundForm ? 'Edit form' : 'Create form' }}
+          </button>
+          <small v-if="!form.name">Name the event first.</small>
+        </div>
         <template v-if="isSuperAdmin && form.archive">
           <label class="adm-field">
             <span>Display date</span>
@@ -432,7 +473,13 @@
           <button type="button" class="adm-btn ghost" :disabled="busy" @click="downloadRecords">
             Download records
           </button>
-          <button type="button" class="adm-btn mari" :disabled="busy" @click="release">
+          <button
+            v-if="ops.entry_mode !== 'open'"
+            type="button"
+            class="adm-btn mari"
+            :disabled="busy"
+            @click="release"
+          >
             Release certificates
           </button>
         </div>
@@ -455,18 +502,21 @@ import {
   POSTER_TYPES,
   TEMPLATE_MAX_BYTES,
   TEMPLATE_TYPES,
+  boundFormForEvent,
   canManageEvent,
   cancelRequest,
   deleteEvent,
   downloadCsv,
   exportEventRecords,
   flattenExportRows,
+  formQuestionCount,
   getAvailableCohorts,
   importAttendance,
   isMaskedEmail,
   listEventRegistrations,
   listAttendance,
   listEvents,
+  listForms,
   membersOnlyAudience,
   normalizeEmail,
   parseCsv,
@@ -476,6 +526,7 @@ import {
   requestEventPublish,
   setEventCancelled,
   suggestMeetMapping,
+  syncBoundEventForm,
   uploadCertificateTemplate,
   uploadEventPoster,
 } from '../../lib/admin.js';
@@ -485,7 +536,7 @@ const props = defineProps({
   lookups: { type: Object, required: true },
   initialId: { type: String, default: null },
 });
-const emit = defineEmits(['changed']);
+const emit = defineEmits(['changed', 'edit-form']);
 
 const view = ref('upcoming');
 const events = ref([]);
@@ -494,6 +545,7 @@ const busy = ref(false);
 const error = ref('');
 const notice = ref('');
 const form = ref(null);
+const boundForm = ref(null);
 const formError = ref('');
 const dlg = ref(null);
 const opsDlg = ref(null);
@@ -552,6 +604,10 @@ const rcScopes = computed(() => [
 const ATTENDANCE_MODES = [
   { value: 'meet', label: 'Google Meet (≥20 minutes)' },
   { value: 'reviewed', label: 'Reviewed list' },
+];
+const ENTRY_MODES = [
+  { value: 'register', label: 'Form' },
+  { value: 'open', label: 'No form' },
 ];
 const IMPORT_MODES = [
   { value: 'merge', label: 'Merge; keep omitted rows' },
@@ -627,7 +683,7 @@ onMounted(async () => {
   }
   await load();
   const row = events.value.find((r) => r.id === props.initialId);
-  if (row) edit(row);
+  if (row) await edit(row);
 });
 
 function show(v) {
@@ -647,12 +703,13 @@ defineExpose({
   openRecord: async (id) => {
     await load();
     const row = events.value.find((r) => r.id === id);
-    if (row) edit(row);
+    if (row) await edit(row);
   },
 });
 
-function edit(e) {
+async function edit(e) {
   formError.value = '';
+  boundForm.value = null;
   const start = new Date(Date.now() + 864e5);
   start.setMinutes(0, 0, 0);
   if (e) {
@@ -667,7 +724,9 @@ function edit(e) {
       scope: e.community_id ? 'community' : e.region_id ? 'region' : 'house',
       archive: !!e.archive,
       is_public: !!e.is_public,
+      entry_mode: e.entry_mode === 'open' ? 'open' : 'register',
     };
+    boundForm.value = boundFormForEvent(await listForms().catch(() => []), e.id);
   } else {
     form.value = {
       name: '',
@@ -676,6 +735,7 @@ function edit(e) {
       ends: toLocal(new Date(start.getTime() + 36e5)),
       audience_cohorts: [],
       attendance_mode: 'meet',
+      entry_mode: 'register',
       certificate_template_url: '',
       archive: false,
       is_public: false,
@@ -726,6 +786,10 @@ function friendly(e) {
   if (/cohort/.test(m))
     return 'Choose only available cohorts, including at most the next future one.';
   if (/events_image_cloudinary/.test(m)) return 'Posters must be uploaded here.';
+  if (/Open sessions do not take a registration form/.test(m))
+    return 'Open sessions do not take a registration form.';
+  if (/Remove the registration form before making this an open session/.test(m))
+    return 'Remove the registration form before making this an open session.';
   if (/waiting for/.test(m))
     return 'This event is waiting for a Super Admin; cancel the request to edit it.';
   if (e?.code === '42501') return 'You cannot change this event.';
@@ -733,11 +797,30 @@ function friendly(e) {
 }
 
 async function save(mode) {
+  const meet = (form.value.gmail_link || '').trim();
+  if (
+    form.value.entry_mode === 'open' &&
+    (mode === 'publish' || (form.value.published_at && mode !== 'unpublish')) &&
+    !/^https:\/\//i.test(meet)
+  ) {
+    formError.value = 'Open sessions need a meeting link that starts with https://';
+    return;
+  }
+  if (form.value.entry_mode === 'register' && mode === 'publish') {
+    const bound =
+      boundForm.value || boundFormForEvent(await listForms().catch(() => []), form.value.id);
+    if (!bound || formQuestionCount(bound) < 1) {
+      formError.value = 'Add at least one question to the form before publishing.';
+      return;
+    }
+  }
   if (
     mode === 'unpublish' &&
     !(await askConfirm({
       title: 'Unpublish this event?',
-      message: 'It goes back to a draft and disappears for members until you publish it again.',
+      message: boundForm.value
+        ? 'It goes back to a draft and disappears for members until you publish it again. Its registration form is unpublished too.'
+        : 'It goes back to a draft and disappears for members until you publish it again.',
       confirmLabel: 'Unpublish',
       danger: true,
     }))
@@ -746,19 +829,50 @@ async function save(mode) {
   busy.value = true;
   formError.value = '';
   try {
+    let id = form.value.id;
     if (mode === 'publish' && needsApproval.value) {
-      const id = await saveEvent(payload());
+      id = await saveEvent(payload());
       await requestEventPublish(id);
       notice.value = 'Sent to a Super Admin. The event goes live once they approve it.';
     } else {
-      await saveEvent(payload(), {
+      id = await saveEvent(payload(), {
         publish: mode === 'publish',
         unpublish: mode === 'unpublish',
       });
     }
+    form.value.id = id;
+    if (form.value.entry_mode === 'register') {
+      await syncBoundEventForm(
+        { ...payload(), id, name: form.value.name, description: form.value.description },
+        { publish: mode === 'publish' && !needsApproval.value, unpublish: mode === 'unpublish' }
+      );
+    }
     dlg.value?.close();
     await load();
     emit('changed');
+  } catch (e) {
+    formError.value = friendly(e);
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function openFormEditor() {
+  if (!form.value?.name) {
+    formError.value = 'Name the event first.';
+    nameInput.value?.focus();
+    return;
+  }
+  busy.value = true;
+  formError.value = '';
+  try {
+    const id = await saveEvent(payload());
+    form.value.id = id;
+    emit('changed');
+    emit('edit-form', {
+      event: { ...payload(), id, name: form.value.name, description: form.value.description },
+      formId: boundForm.value?.id ?? null,
+    });
   } catch (e) {
     formError.value = friendly(e);
   } finally {
@@ -995,7 +1109,7 @@ async function downloadRecords() {
 }
 
 async function release() {
-  if (!ops.value) return;
+  if (!ops.value || ops.value.entry_mode === 'open') return;
   const yes = await askConfirm({
     title: 'Release certificates?',
     message:

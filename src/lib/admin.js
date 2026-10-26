@@ -486,7 +486,7 @@ export function flattenExportRows(value) {
 // Events
 
 const EVENT_COLS =
-  'id, name, description, registration_link, gmail_link, starts_at, ends_at, community_id, region_id, published_at, audience_cohorts, attendance_mode, certificate_template_url, certificates_released_at, archive, source_key, display_date, image_url, event_type, wing, location, image_width, image_height, attendee_count, attendee_display, cancelled_at, deleted_at, created_at, updated_at, is_public, created_by';
+  'id, name, description, registration_link, gmail_link, starts_at, ends_at, community_id, region_id, published_at, audience_cohorts, attendance_mode, certificate_template_url, certificates_released_at, archive, source_key, display_date, image_url, event_type, wing, location, image_width, image_height, attendee_count, attendee_display, cancelled_at, deleted_at, created_at, updated_at, is_public, entry_mode, created_by';
 
 export async function listEvents({ view = 'upcoming' } = {}) {
   const now = new Date().toISOString();
@@ -562,7 +562,10 @@ export async function saveEvent(event, { publish = false, unpublish = false } = 
     region_id: event.region_id || null,
     audience_cohorts: event.audience_cohorts ?? [],
     attendance_mode: event.attendance_mode || 'meet',
-    certificate_template_url: event.certificate_template_url || null,
+    certificate_template_url:
+      event.entry_mode === 'open' && !event.certificates_released_at
+        ? null
+        : event.certificate_template_url || null,
     archive: !!event.archive,
     source_key: event.source_key || null,
     display_date: event.display_date || null,
@@ -575,6 +578,7 @@ export async function saveEvent(event, { publish = false, unpublish = false } = 
     attendee_count: event.attendee_count ?? null,
     attendee_display: event.attendee_display || null,
     is_public: !!event.is_public,
+    entry_mode: event.entry_mode === 'open' ? 'open' : 'register',
   };
   if (publish) row.published_at = new Date().toISOString();
   else if (unpublish) row.published_at = null;
@@ -728,6 +732,67 @@ export async function listForms() {
 }
 
 export const saveForm = (form) => loungeSaveForm(form);
+
+export const boundFormForEvent = (forms, eventId) =>
+  eventId ? (forms.find((f) => f.event_id === eventId) ?? null) : null;
+
+export const formQuestionCount = (form) => (form?.fields || []).length;
+
+export function formNeedsPublishApproval(form, events = []) {
+  if (isSuperAdmin.value) return false;
+  if (form.community_id) return true;
+  if (!form.event_id) return false;
+  return events.find((event) => event.id === form.event_id)?.community_id != null;
+}
+
+export function loungeFormWritePayload(form, overrides = {}) {
+  return {
+    id: form.id,
+    title: form.title,
+    description: form.description || null,
+    fields: form.fields || [],
+    region_id: form.region_id ?? null,
+    community_id: form.community_id ?? null,
+    event_id: form.event_id ?? null,
+    joins_community: !!form.joins_community,
+    is_open: form.is_open !== false,
+    published_at: form.published_at || null,
+    opens_at: form.opens_at ?? null,
+    closes_at: form.closes_at ?? null,
+    audience_cohorts: form.audience_cohorts ?? [],
+    form_kind: form.form_kind || 'general',
+    group_label: form.group_label || null,
+    group_purpose: form.group_purpose || null,
+    archived_at: form.archived_at || null,
+    source_url: form.source_url || null,
+    ...overrides,
+  };
+}
+
+export async function syncBoundEventForm(event, { publish = false, unpublish = false } = {}) {
+  const bound = boundFormForEvent(await listForms(), event.id);
+  if (!bound) return null;
+  const published_at = publish
+    ? new Date().toISOString()
+    : unpublish
+      ? null
+      : bound.published_at || null;
+  const payload = loungeFormWritePayload(bound, {
+    title: event.name,
+    description: event.description || null,
+    event_id: event.id,
+    region_id: null,
+    community_id: null,
+    published_at,
+  });
+  if (publish && formNeedsPublishApproval(bound, [event]) && !bound.published_at) {
+    await saveForm({ ...payload, published_at: null });
+    await requestFormPublish(bound.id);
+    return bound;
+  }
+  await saveForm(payload);
+  return bound;
+}
 
 // Head/Co-Head forms go live only when a Super Admin approves this request.
 export const requestFormPublish = (formId, reason) =>
