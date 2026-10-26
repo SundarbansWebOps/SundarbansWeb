@@ -256,6 +256,14 @@ function archiveParts(e) {
 }
 export const eventYear = (event) => archiveParts(event).year;
 
+/* A single descending sort value from the archive date, so events with no starts_at (month-only
+   display dates such as "May 2026") sit in their right year instead of after every timestamp. */
+export function archiveSortValue(event) {
+  const { year, month, day } = archiveParts(event);
+  if (year == null) return null;
+  return year * 10000 + (month == null ? 0 : (month + 1) * 100) + (day ?? 0);
+}
+
 /* "Thu, 8 Oct · 8:30 pm" for this year, "15 Feb 2025" for older, "May 2026" for month-only. */
 export function whenOf(e) {
   if (!e.starts_at) return e.display_date || 'Date not recorded';
