@@ -15,7 +15,7 @@
       <aside class="sidebar" aria-label="Admin navigation">
         <nav class="desk-nav" aria-label="Admin sections">
           <template v-for="item in tabs" :key="item.id">
-            <p v-if="item.id === 'positions'" class="nav-label">Administration</p>
+            <p v-if="item.id === 'directory'" class="nav-label">Administration</p>
             <button :aria-current="tab === item.id ? 'page' : undefined" @click="navigate(item.id)">
               <LineIcon :name="item.icon" />{{ item.label
               }}<span
@@ -187,6 +187,7 @@ import AdminRequests from '../components/admin/AdminRequests.vue';
 import AdminPositions from '../components/admin/AdminPositions.vue';
 import AdminAudit from '../components/admin/AdminAudit.vue';
 import AdminLookup from '../components/admin/AdminLookup.vue';
+import AdminDirectory from '../components/admin/AdminDirectory.vue';
 import '../components/admin/admin.css';
 import CREST from '../assets/crest.webp';
 import {
@@ -266,6 +267,15 @@ const allTabs = [
     component: AdminLookup,
     description:
       'Check one exact email against the whole house. Every lookup is recorded in the activity log.',
+  },
+  {
+    id: 'directory',
+    label: 'Directory',
+    icon: 'lock',
+    component: AdminDirectory,
+    sa: true,
+    description:
+      'Search every student in the house upload by name, email or phone. Every search is recorded in the activity log.',
   },
   {
     id: 'positions',

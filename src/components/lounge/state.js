@@ -25,9 +25,14 @@ export function applyProfile(profile) {
   tourSeen.value = !!profile.tour_seen_at;
 }
 
-export async function savePreferredName(v, phone) {
-  const { saveMemberProfile } = await import('./session.js');
+// One name: the member's full name, as on their IITM records. While the record has none, the
+// first name they save fills it too (set once, audited; an admin corrects it after that).
+// Gender rides along from Edit profile. Details go first so a refusal saves nothing.
+export async function savePreferredName(v, phone, gender = null) {
+  const { saveMemberProfile, saveMyDetails } = await import('./session.js');
   const name = cleanName(v);
+  const fullName = member.id && !member.full_name && name.length >= 2 ? name : null;
+  if (fullName || gender) await saveMyDetails({ full_name: fullName, gender });
   const row = await saveMemberProfile({
     preferred_name: name,
     phone: phone === undefined ? member.phone : phone,

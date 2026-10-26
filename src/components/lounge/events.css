@@ -987,6 +987,7 @@
   font-size: var(--fs-body);
   line-height: 1.5;
   color: var(--t-2);
+  white-space: pre-line;
 }
 
 :where(html.lounge-active) .evd-act {
@@ -1009,6 +1010,7 @@
   border: 1px dashed color-mix(in srgb, var(--t-3) 70%, transparent);
   border-radius: 4px;
   color: var(--t-2);
+  white-space: pre-line;
 }
 
 :where(html.lounge-active) .evd-done {

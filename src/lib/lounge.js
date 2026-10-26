@@ -19,7 +19,7 @@ export async function loadLounge() {
     supabase
       .from('members')
       .select(
-        'id,member_code,full_name,preferred_name,email,phone,region_id,tour_seen_at,group_forms_hidden,certificate_name,certificate_name_confirmed_at,cohort,region:regions(code,name)'
+        'id,member_code,full_name,preferred_name,gender,email,phone,region_id,tour_seen_at,group_forms_hidden,certificate_name,certificate_name_confirmed_at,cohort,region:regions(code,name)'
       )
       .eq('id', uid)
       .single()
@@ -34,6 +34,9 @@ export async function loadLounge() {
 }
 export const updateProfile = ({ preferred_name = null, phone = null }) =>
   rpc('update_my_profile', { p_preferred_name: preferred_name, p_phone: phone });
+// Full name and gender, each only while empty; afterwards an admin corrects them.
+export const completeProfile = ({ full_name = null, gender = null }) =>
+  rpc('complete_my_profile', { p_full_name: full_name, p_gender: gender });
 export const markTourSeen = (seen = true) => rpc('set_my_tour_seen', { p_seen: seen });
 export const setGroupFormsHidden = (hidden) =>
   rpc('set_group_forms_hidden', { p_hidden: !!hidden });

@@ -5,6 +5,7 @@ export const member = reactive({
   id: '',
   full_name: '',
   preferred_name: '',
+  gender: '',
   email: '',
   phone: '',
   roll: '',

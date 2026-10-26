@@ -17,7 +17,9 @@ test('roster import blocks unrecognized region labels until corrected', async ({
   });
 
   await expect(
-    page.getByRole('alert').filter({ hasText: 'Fix unknown region labels before importing.' })
+    page
+      .getByRole('alert')
+      .filter({ hasText: 'Fix unknown region or gender labels before importing.' })
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Import 1' })).toBeDisabled();
 });

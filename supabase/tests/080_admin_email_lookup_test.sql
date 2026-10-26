@@ -10,9 +10,9 @@ values
  ('e1000000-0000-4000-8000-000000000003', '99f1920003', '99f1920003@ds.study.iitm.ac.in', 'Lookup head', null, null, null, 1, '99F1'),
  ('e1000000-0000-4000-8000-000000000004', '99f1920004', '99f1920004@ds.study.iitm.ac.in', 'Lookup co-head', null, null, null, 1, '99F1'),
  ('e1000000-0000-4000-8000-000000000005', '99f1920005', '99f1920005@ds.study.iitm.ac.in', 'Lookup plain', null, null, null, 2, '99F1'),
- ('e1000000-0000-4000-8000-000000000006', '99f1920006', '99f1920006@ds.study.iitm.ac.in', 'Far student', 'Faraway', '+919000000006', 'F', 2, '99F1'),
+ ('e1000000-0000-4000-8000-000000000006', '99f1920006', '99f1920006@ds.study.iitm.ac.in', 'Far student', 'Faraway', '+919000000006', 'Female', 2, '99F1'),
  ('e1000000-0000-4000-8000-000000000007', '99f1920007', '99f1920007@ds.study.iitm.ac.in', 'Lookup past head', null, null, null, 1, '99F1'),
- ('e1000000-0000-4000-8000-000000000008', '99f1920008', '99f1920008@ds.study.iitm.ac.in', 'Gone student', null, '+919000000008', 'M', 2, '99F1');
+ ('e1000000-0000-4000-8000-000000000008', '99f1920008', '99f1920008@ds.study.iitm.ac.in', 'Gone student', null, '+919000000008', 'Male', 2, '99F1');
 update public.members set account_status = 'deleted', deleted_at = now() where id = 'e1000000-0000-4000-8000-000000000008';
 
 -- The allowlist references auth.users, so the Super Admin signs up through the roster claim.
@@ -33,7 +33,7 @@ insert into public.admin_assignments(member_id, position, region_id, community_i
 values ('e1000000-0000-4000-8000-000000000006', 'rc', 2, null, 'e1000000-0000-4000-8000-000000000001');
 
 insert into public.member_roster(email, full_name, phone, gender, region_id, added_by)
-values ('waiting.person@ds.study.iitm.ac.in', 'Waiting Person', '+919000000099', 'M', 2, 'e1000000-0000-4000-8000-000000000098');
+values ('waiting.person@ds.study.iitm.ac.in', 'Waiting Person', '+919000000099', 'Male', 2, 'e1000000-0000-4000-8000-000000000098');
 
 insert into public.lounge_forms(id, title, form_kind, group_label, created_by, published_at)
 values ('e1000000-0000-4000-8000-0000000000f1', 'Lookup group form', 'group', 'Group A', 'e1000000-0000-4000-8000-000000000098', now());

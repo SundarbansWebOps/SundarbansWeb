@@ -1,6 +1,8 @@
 <!--
-  The name card. A member edits only the preferred name and optional phone (spec 002 §2); roll
-  and region come from the roster and the coordinator fixes them.
+  The name card. A member edits the preferred name and optional phone (spec 002 §2); roll and
+  region come from the roster and the coordinator fixes them. The name is the member's full name;
+  while the record has none, saving it fills that too (savePreferredName). Gender is asked only
+  while empty and set once (complete_my_profile); after that an admin corrects them.
   - variant 'profile': "Edit profile" from the profile menu.
   - variant 'ghat': the ghat name card reopened over the Lounge (openNameCard() in state.js:
     the lantern's "Name your lantern" chip, the crest face). The same band card and fields
@@ -28,13 +30,14 @@
       </div>
 
       <label class="pe-field">
-        <span>{{ ghat ? 'Your name' : 'Name in the Lounge' }}</span>
+        <span>Your full name</span>
         <input
           ref="nameEl"
           v-model="draft"
-          maxlength="60"
+          :aria-required="need.name || undefined"
+          maxlength="100"
           autocomplete="name"
-          placeholder="The name you go by"
+          placeholder="As on your IITM records"
           aria-describedby="pe-name-help"
         />
         <small id="pe-name-help">
@@ -43,6 +46,16 @@
             Please use your registered name; another name may lead to disciplinary action.
           </span>
         </small>
+      </label>
+
+      <label v-if="need.gender" class="pe-field">
+        <span>Gender</span>
+        <select v-model="genderDraft" aria-describedby="pe-gender-help">
+          <option value="">Choose</option>
+          <option>Female</option>
+          <option>Male</option>
+        </select>
+        <small id="pe-gender-help">Set once. Your Regional Coordinator corrects mistakes.</small>
       </label>
 
       <label class="pe-field">
@@ -58,6 +71,10 @@
       </label>
 
       <div class="pe-ro gp-inset">
+        <div v-if="!need.gender && member.gender">
+          <span class="pe-k">Gender</span>
+          <span class="pe-v">{{ member.gender }}</span>
+        </div>
         <div>
           <span class="pe-k">Roll</span>
           <span class="pe-v tnum">{{ member.roll }}</span>
@@ -122,7 +139,7 @@ import { errorText } from '../../lib/auth.js';
 import LoungeDialog from './LoungeDialog.vue';
 import RegionSelect from './RegionSelect.vue';
 import { member } from './fixtures.js';
-import { lounge, refreshLounge } from './session.js';
+import { lounge, missingDetails, refreshLounge } from './session.js';
 import {
   certName,
   cleanName,
@@ -138,7 +155,10 @@ const emit = defineEmits(['close']);
 const ghat = computed(() => props.variant === 'ghat');
 const dlg = ref(null);
 const nameEl = ref(null);
-const draft = ref(preferredName.value);
+// Asked once per opening: the fields stay put while this card is open, even after they save.
+const need = ghat.value ? { name: false, gender: false } : { ...missingDetails.value };
+const genderDraft = ref('');
+const draft = ref(preferredName.value || member.full_name || '');
 const phoneDraft = ref(member.phone || '');
 const draftClean = computed(() => cleanName(draft.value));
 const saved = ref(false);
@@ -187,11 +207,17 @@ onMounted(() => {
 
 async function save() {
   if (busy.value) return;
-  busy.value = true;
   error.value = '';
+  const gender = (need.gender && genderDraft.value) || null;
+  if (need.name && cleanName(draft.value).length < 2) {
+    error.value = 'Add your full name as on your IITM records.';
+    nameEl.value?.focus();
+    return;
+  }
+  busy.value = true;
   const from = nameEl.value?.getBoundingClientRect();
   try {
-    await savePreferredName(draft.value, phoneDraft.value.trim() || null);
+    await savePreferredName(draft.value, phoneDraft.value.trim() || null, gender);
     nameOn.value = true;
     if (preferredName.value) {
       nameFlight.value = {

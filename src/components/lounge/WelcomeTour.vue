@@ -446,14 +446,14 @@
           </div>
           <form v-if="!saved" class="who" @submit.prevent="save">
             <label class="f-name">
-              <span>Your name</span>
+              <span>Your full name</span>
               <input
                 ref="nameEl"
                 v-model="nameDraft"
                 type="text"
                 autocomplete="name"
-                maxlength="60"
-                placeholder="The name you go by"
+                maxlength="100"
+                placeholder="As on your IITM records"
                 aria-describedby="t-name-help"
               />
               <small id="t-name-help"
@@ -765,8 +765,8 @@ const stars = computed(() => {
   }));
 });
 
-/* The name at the ghat: the member's preferred name, never the roll number. */
-const nameDraft = ref(preferredName.value || '');
+/* The name at the ghat: the member's full name, never the roll number. */
+const nameDraft = ref(preferredName.value || member.full_name || '');
 const phoneDraft = ref(member.phone || '');
 const saved = ref(false);
 const savedName = ref('');

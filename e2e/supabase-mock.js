@@ -88,7 +88,7 @@ function profileOf(person) {
     group_forms_hidden: false,
     certificate_name: null,
     certificate_name_confirmed_at: null,
-    gender: null,
+    gender: 'Female',
     region_id: 1,
     account_status: 'active',
     deleted_at: null,
@@ -118,8 +118,9 @@ const LOUNGE_DEFAULTS = {
   list_students: { total: 0, rows: [] },
 };
 
-// `profile` overrides members columns (e.g. tour_seen_at: null for a first-time member). The
-// profile is mutable so update_my_profile / set_my_tour_seen persist across reloads like the
+// `profile` overrides members columns (e.g. tour_seen_at: null for a first-time member, or
+// full_name/gender null for one who has not filled them in). The profile is mutable so
+// update_my_profile / complete_my_profile / set_my_tour_seen persist across reloads like the
 // real rows do.
 export async function mockSupabase(
   page,
@@ -178,6 +179,12 @@ export async function mockSupabase(
         if (name === 'set_group_forms_hidden') {
           row.group_forms_hidden = !!args.p_hidden;
           return json(row.group_forms_hidden);
+        }
+        // Fills only empty fields, like the real RPC.
+        if (name === 'complete_my_profile') {
+          row.full_name ??= args.p_full_name;
+          row.gender ??= args.p_gender;
+          return json(row);
         }
         if (name === 'update_my_profile') {
           row.preferred_name = args.p_preferred_name;

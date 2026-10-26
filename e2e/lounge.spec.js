@@ -54,17 +54,17 @@ test('Skipping the tour leaves it unseen, entering marks it seen, and name edits
   });
   await page.goto('/#/lounge');
   await page.getByRole('button', { name: 'Skip tour' }).click();
-  await expect(page.getByLabel(/^Your name/)).toBeVisible();
+  await expect(page.getByLabel(/^Your full name/)).toBeVisible();
   // Skip only advances to the ghat; nothing is recorded as seen yet.
   expect(tourRpcs(calls)).toEqual([]);
-  await page.getByLabel(/^Your name/).fill('Riya Venkataraman');
+  await page.getByLabel(/^Your full name/).fill('Riya Venkataraman');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.getByRole('button', { name: 'Enter the Lounge', exact: true }).click();
   await expect(page.locator('.tour')).toHaveCount(0);
   await expect.poll(() => tourRpcs(calls)).toEqual([{ p_seen: true }]);
   await page.getByRole('button', { name: /^Your profile/ }).click();
   await page.getByRole('button', { name: 'Edit profile', exact: true }).click();
-  await page.getByLabel(/^Name in the Lounge/).fill('Riya');
+  await page.getByLabel(/^Your full name/).fill('Riya');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('dialog[open]')).toHaveCount(0);
   const saves = calls

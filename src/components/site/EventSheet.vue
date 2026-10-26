@@ -412,6 +412,7 @@ h2 {
   font-size: 15.5px;
   line-height: 1.6;
   color: var(--ink-2);
+  white-space: pre-line;
   max-width: 62ch;
   animation: rise 0.6s var(--ease-out) both 0.22s;
 }

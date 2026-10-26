@@ -4,6 +4,7 @@ import { computed, reactive, watch } from 'vue';
 import { auth, errorText, isSuperAdmin } from '../../lib/auth.js';
 import { lower } from '../../lib/house.js';
 import {
+  completeProfile,
   confirmCertificateName as persistCertName,
   getFormInvite,
   groupFormsForMember,
@@ -102,6 +103,7 @@ export function fillMember(profile) {
     id: profile.id,
     full_name: profile.full_name ?? '',
     preferred_name: profile.preferred_name ?? '',
+    gender: profile.gender ?? '',
     email: profile.email ?? '',
     phone: profile.phone ?? '',
     roll: (profile.member_code || '').toUpperCase(),
@@ -184,6 +186,19 @@ export async function saveMemberProfile({ preferred_name, phone }) {
     preferred_name: preferred_name ?? preferredName.value ?? '',
     phone: phone === undefined ? (member.phone ?? null) : phone,
   });
+  auth.profile = { ...auth.profile, ...row };
+  fillMember({ ...auth.profile, ...row });
+  return row;
+}
+
+// Students who signed in after the roster clean-up have no full name; the nav strip and the
+// profile card ask for it (and gender) until both are set.
+export const missingDetails = computed(() =>
+  member.id ? { name: !member.full_name, gender: !member.gender } : { name: false, gender: false }
+);
+
+export async function saveMyDetails({ full_name, gender }) {
+  const row = await completeProfile({ full_name, gender });
   auth.profile = { ...auth.profile, ...row };
   fillMember({ ...auth.profile, ...row });
   return row;

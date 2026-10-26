@@ -319,7 +319,7 @@
         </label>
         <label class="adm-field">
           <span>Gender</span>
-          <input v-model="form.gender" class="adm-input" maxlength="50" />
+          <AdminSelect v-model="form.gender" :options="GENDER_OPTIONS" />
         </label>
         <label class="adm-field">
           <span>Phone (optional)</span>
@@ -441,6 +441,7 @@ import LineIcon from '../site/LineIcon.vue';
 import { askConfirm } from '../../lib/admin-confirm.js';
 import { auth, errorText, isHead, isRc, isSuperAdmin } from '../../lib/auth.js';
 import {
+  GENDER_OPTIONS,
   POSITION_LABEL,
   STATUS_ACTION_LABEL,
   addCommunityMembers,

@@ -111,6 +111,15 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
     </button>
   </div>
+  <!-- Until the member's full name and gender are set (notices take the strip first). -->
+  <div v-else-if="details" class="lnav-strip" role="region" aria-label="Your details">
+    <button type="button" class="lnav-strip-open" @click="emit('edit')">
+      <span class="lnav-strip-k">Profile</span>
+      <span class="lnav-strip-text"
+        ><b>{{ details }}</b> <span class="lnav-strip-body">As on your IITM records.</span></span
+      >
+    </button>
+  </div>
 </template>
 
 <script setup>
@@ -118,20 +127,29 @@ import { computed, onBeforeUnmount, watchEffect } from 'vue';
 import CREST from '../../assets/crest.webp';
 import LineIcon from '../site/LineIcon.vue';
 import * as ev from './events.js';
+import { missingDetails } from './session.js';
 import { callName, initialsOf, theme } from './state.js';
 import { avatarFailed, avatarUrl } from '../../lib/auth.js';
 import * as tide from './tide.js';
 
 defineProps({ view: { type: String, default: 'home' }, profileOpen: Boolean });
-const emit = defineEmits(['notices', 'profile']);
+const emit = defineEmits(['notices', 'profile', 'edit']);
 
 /* events.js and tide.js belong to other workers; read them defensively. */
 const unread = computed(() => ev.unreadCount?.value ?? 0);
 const strip = computed(() => ev.bannerNotice?.value ?? null);
 const initials = computed(() => initialsOf(callName.value));
+const details = computed(() => {
+  const { name, gender } = missingDetails.value;
+  if (name && gender) return 'Add your full name and gender.';
+  if (name) return 'Add your full name.';
+  return gender ? 'Add your gender.' : '';
+});
 
 /* Views pad their top by --banner-h while the strip shows. */
-watchEffect(() => document.documentElement.classList.toggle('has-banner', !!strip.value));
+watchEffect(() =>
+  document.documentElement.classList.toggle('has-banner', !!(strip.value || details.value))
+);
 onBeforeUnmount(() => document.documentElement.classList.remove('has-banner'));
 </script>
 

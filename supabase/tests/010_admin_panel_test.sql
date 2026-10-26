@@ -99,7 +99,8 @@ select throws_ok($$ select public.sa_set_suspended('a9000000-0000-4000-8000-0000
 select throws_ok($$ select public.assign_position('a9000000-0000-4000-8000-000000000005', 'rc') $$,
   '42501', null, 'direct position assignment is no longer callable');
 
-update public.members set full_name = 'Sneaky' where id = 'a9000000-0000-4000-8000-000000000004';
+select throws_ok($$ update public.members set full_name = 'Sneaky' where id = 'a9000000-0000-4000-8000-000000000004' $$,
+  '42501', null, 'full_name has no direct write grant');
 select results_eq($$ select full_name from public.members where id = 'a9000000-0000-4000-8000-000000000004' $$,
   $$ values ('Fixture s1'::text) $$, 'a Super Admin cannot edit another member directly');
 

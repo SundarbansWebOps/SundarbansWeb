@@ -42,7 +42,7 @@
       </label>
       <label class="adm-field">
         <span>Gender (optional)</span>
-        <input v-model.trim="one.gender" class="adm-input" maxlength="50" />
+        <AdminSelect v-model="one.gender" :options="GENDER_OPTIONS" />
       </label>
       <label v-if="isSuperAdmin" class="adm-field wide">
         <span>Region</span>
@@ -83,8 +83,8 @@
       <p class="adm-note wide">
         {{ parsed.length }} student{{ parsed.length === 1 ? '' : 's' }} found.
       </p>
-      <p v-if="parsed.some((r) => r.region_error)" class="adm-msg err wide" role="alert">
-        Fix unknown region labels before adding students.
+      <p v-if="parsed.some(badRow)" class="adm-msg err wide" role="alert">
+        Fix unknown region or gender labels before adding students. Gender is Female or Male.
       </p>
       <ul v-if="bulkResult" class="results wide">
         <li v-for="r in bulkResult.filter((x) => !x.ok)" :key="r.email">
@@ -99,9 +99,7 @@
         <button
           type="submit"
           class="adm-btn"
-          :disabled="
-            busy || !parsed.length || parsed.length > 500 || parsed.some((r) => r.region_error)
-          "
+          :disabled="busy || !parsed.length || parsed.length > 500 || parsed.some(badRow)"
         >
           Add {{ parsed.length || '' }} to roster
         </button>
@@ -167,8 +165,8 @@
           </table>
         </div>
       </template>
-      <p v-if="uniqueCsv.some((r) => r.region_error)" class="adm-msg err wide" role="alert">
-        Fix unknown region labels before importing.
+      <p v-if="uniqueCsv.some(badRow)" class="adm-msg err wide" role="alert">
+        Fix unknown region or gender labels before importing. Gender is Female or Male.
       </p>
       <ul v-if="csvResult" class="results wide">
         <li v-for="r in csvResult.filter((x) => !x.ok)" :key="r.email">
@@ -183,12 +181,7 @@
         <button
           type="submit"
           class="adm-btn mari"
-          :disabled="
-            busy ||
-            !uniqueCsv.length ||
-            uniqueCsv.length > 500 ||
-            uniqueCsv.some((r) => r.region_error)
-          "
+          :disabled="busy || !uniqueCsv.length || uniqueCsv.length > 500 || uniqueCsv.some(badRow)"
         >
           Import {{ uniqueCsv.length || '' }}
         </button>
@@ -207,6 +200,7 @@ import AdminDialog from './AdminDialog.vue';
 import AdminSelect from './AdminSelect.vue';
 import { auth, errorText, isSuperAdmin } from '../../lib/auth.js';
 import {
+  GENDER_OPTIONS,
   downloadCsv,
   parseCsv,
   parseRosterPaste,
@@ -278,6 +272,8 @@ const csvMsg = ref('');
 const csvOk = ref(false);
 const csvFile = ref('');
 const csvDragging = ref(false);
+
+const badRow = (r) => !!(r.region_error || r.gender_error);
 
 function scoped(row) {
   return { ...row, region_id: isSuperAdmin.value ? row.region_id : null };

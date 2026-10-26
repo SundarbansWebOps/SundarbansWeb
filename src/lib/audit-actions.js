@@ -22,6 +22,7 @@ export const CATEGORIES = [
       'member.contact_change',
       'member.hard_delete',
       'member.group_forms_hidden',
+      'member.self_profile',
       'members.update',
     ],
   },
@@ -227,6 +228,17 @@ const ACTIONS = {
     'people',
     'Reinstated',
     (r) => ({ parts: [actor(r), ' reinstated ', subject(r)], note: reason(nv(r)) }),
+  ],
+  'member.self_profile': [
+    'people',
+    'Filled in their details',
+    (r) => ({
+      parts: [actor(r), ' filled in their own details'],
+      note: ['full_name', 'gender']
+        .filter((k) => k in nv(r))
+        .map((k) => `${k === 'full_name' ? 'full name' : k} ${nv(r)[k]}`)
+        .join(' · '),
+    }),
   ],
   'member.contact_change': [
     'people',
@@ -476,6 +488,18 @@ const ACTIONS = {
     (r) => ({
       parts: [actor(r), ' looked up ', { record: true, text: nv(r).email || 'an email' }],
       note: nv(r).found ? `Found · ${nv(r).source}` : 'Not found',
+    }),
+  ],
+  'data.directory_search': [
+    'data',
+    'Directory searched',
+    (r) => ({
+      parts: [
+        actor(r),
+        ' searched the directory for ',
+        { record: true, text: nv(r).query || 'a student' },
+      ],
+      note: nv(r).results != null ? `${nv(r).results} found` : null,
     }),
   ],
 };

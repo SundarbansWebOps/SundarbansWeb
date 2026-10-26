@@ -11,6 +11,7 @@
     :profile-open="profileOpen"
     @notices="openNotices"
     @profile="profileOpen = true"
+    @edit="editOpen = true"
   />
   <main v-if="showHome" id="main">
     <LoungeHome
