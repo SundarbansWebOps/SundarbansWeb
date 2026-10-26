@@ -215,4 +215,5 @@ test('the public Events page shows Public live and upcoming events above the arc
   await liveSection.getByText('Night quiz').first().click();
   await expect(page.getByRole('button', { name: /Log in to Launch to join/ })).toBeVisible();
   await expect(page.getByText('Happening now')).toBeVisible();
+  await expect(page.getByRole('link', { name: /Join on Meet/ })).toHaveCount(0);
 });

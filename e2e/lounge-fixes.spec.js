@@ -183,6 +183,75 @@ test('an open session shows Open to all and ignores a linked form', async ({ pag
   await expect(page.getByRole('button', { name: 'Register', exact: true })).toHaveCount(0);
 });
 
+test('Meet join opens 15 minutes before start while the event stays upcoming', async ({ page }) => {
+  const early = eventRow({
+    name: 'Early join night',
+    starts_at: '2026-10-10T03:30:00Z',
+    ends_at: '2026-10-10T04:30:00Z',
+    stage: 'upcoming',
+    registration: null,
+    attendance: null,
+    meet_link: 'https://example.invalid/early-meet',
+  });
+  const form = {
+    id: FORM,
+    event_id: EVENT,
+    is_open: true,
+    accepting_responses: false,
+    fields: [],
+  };
+  await page.clock.install({ time: new Date('2026-10-10T03:14:00Z') });
+  await mockSupabase(page, {
+    data: { list_lounge_events: [early], list_lounge_forms: [form] },
+  });
+  await page.goto('/#/lounge?view=events');
+  await expect(page.getByRole('tab', { name: /Upcoming/ })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  );
+  const row = page.locator('.er').filter({ hasText: 'Early join night' });
+  await expect(row).toBeVisible();
+  await expect(row).toContainText('Registration closed');
+  await expect(page.getByText('Join early')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: /Join on Meet/ })).toHaveCount(0);
+
+  await page.clock.setSystemTime(new Date('2026-10-10T03:16:00Z'));
+  await page.reload({ waitUntil: 'load' });
+  await expect(row).toBeVisible();
+  await expect(row).toContainText('Join early');
+  await expect(page.getByRole('tab', { name: /Live/ })).toHaveAttribute('aria-selected', 'false');
+  const join = page.getByRole('link', { name: /Join on Meet/ });
+  await expect(join).toHaveCount(1);
+  await expect(join).toHaveAttribute('href', 'https://example.invalid/early-meet');
+  await page.getByRole('button', { name: 'Early join night', exact: true }).click();
+  const sheet = page.getByRole('dialog');
+  await expect(sheet).toContainText('Join early');
+  await expect(sheet.getByRole('link', { name: /Join on Meet/ })).toHaveAttribute(
+    'href',
+    'https://example.invalid/early-meet'
+  );
+  await page.getByRole('button', { name: 'Close' }).click();
+  await expect(sheet).toHaveCount(0);
+
+  await page.goto('/#/lounge');
+  await expect(page.getByLabel('Join early')).toBeVisible();
+  await expect(page.getByRole('link', { name: /Join on Meet/ })).toHaveAttribute(
+    'href',
+    'https://example.invalid/early-meet'
+  );
+
+  await page.clock.setSystemTime(new Date('2026-10-10T03:30:00Z'));
+  await page.goto('/#/lounge?view=events');
+  await page.reload({ waitUntil: 'load' });
+  await page.getByRole('tab', { name: /Live/ }).click();
+  await expect(page.locator('.er')).toContainText('Live now');
+  await expect(page.getByText('Join early')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: /Join on Meet/ })).toHaveAttribute(
+    'href',
+    'https://example.invalid/early-meet'
+  );
+});
+
 test('month-only archive dates keep their year and source text without inventing a day', async ({
   page,
 }) => {
