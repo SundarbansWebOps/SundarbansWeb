@@ -17,7 +17,12 @@
           <b>{{ f.title }}</b>
           <div class="adm-meta">
             <span>{{ scopeOf(f) }}</span>
-            <span v-if="f.pending_request_id" class="adm-badge mari">waiting for approval</span>
+            <span v-if="f.pending_request_type === 'form_delete'" class="adm-badge mari"
+              >waiting to be removed</span
+            >
+            <span v-else-if="f.pending_request_id" class="adm-badge mari"
+              >waiting for approval</span
+            >
             <span v-else-if="f.archived_at" class="adm-badge">archived</span>
             <span v-else-if="formStatus(f) === 'draft'" class="adm-badge">draft</span>
             <span v-else-if="formStatus(f) === 'scheduled'" class="adm-badge">scheduled</span>
@@ -35,7 +40,7 @@
             type="button"
             class="adm-btn danger small"
             :disabled="busy"
-            @click="cancelPublish(f)"
+            @click="cancelPending(f)"
           >
             Cancel request
           </button>
@@ -50,6 +55,24 @@
               @click="archive(f)"
             >
               {{ f.archived_at ? 'Restore' : 'Archive' }}
+            </button>
+            <button
+              v-if="isSuperAdmin"
+              type="button"
+              class="adm-btn danger small"
+              :disabled="busy"
+              @click="removeForm(f)"
+            >
+              Remove
+            </button>
+            <button
+              v-else
+              type="button"
+              class="adm-btn danger small"
+              :disabled="busy"
+              @click="askRemoveForm(f)"
+            >
+              Ask Super Admin to remove
             </button>
           </template>
         </div>
@@ -69,11 +92,7 @@
           Archived forms stay available to organizers and can be restored.
         </p>
         <p v-if="form.pending_request_id" class="adm-note">
-          {{
-            isSuperAdmin
-              ? 'A Head asked to publish this form. Approve or reject it in Requests.'
-              : 'Waiting for a Super Admin to publish it. Cancel the request to edit it.'
-          }}
+          {{ pendingFormNote }}
         </p>
         <p v-else-if="form.published_at" class="adm-note">
           This form is published. Saving changes updates it straight away.{{
@@ -319,13 +338,31 @@
       <template #footer>
         <p v-if="formError" class="adm-msg err foot-msg" role="alert">{{ formError }}</p>
         <button
-          v-if="form.published_at"
+          v-if="form.published_at && !form.pending_request_id"
           type="button"
           class="adm-btn danger push"
           :disabled="busy"
           @click="save('unpublish')"
         >
           Unpublish
+        </button>
+        <button
+          v-if="form.id && isSuperAdmin && !form.pending_request_id"
+          type="button"
+          class="adm-btn danger"
+          :disabled="busy"
+          @click="removeForm(form)"
+        >
+          Remove form
+        </button>
+        <button
+          v-else-if="form.id && !isSuperAdmin && !form.pending_request_id"
+          type="button"
+          class="adm-btn danger"
+          :disabled="busy"
+          @click="askRemoveForm(form)"
+        >
+          Ask Super Admin to remove
         </button>
         <template v-if="form.published_at">
           <button type="submit" class="adm-btn mari" :form="editorId" :disabled="busy">
@@ -531,10 +568,12 @@ import { computed, onMounted, reactive, ref, useId, watch } from 'vue';
 import AdminDialog from './AdminDialog.vue';
 import AdminSelect from './AdminSelect.vue';
 import AdminCohortSelect from './AdminCohortSelect.vue';
+import { askConfirm } from '../../lib/admin-confirm.js';
 import { auth, errorText, isRc, isSuperAdmin } from '../../lib/auth.js';
 import {
   FORM_FIELD_TYPES,
   cancelRequest,
+  deleteLoungeForm,
   PREFILL_KEYS,
   REJECT_REASONS,
   REVIEW_LABEL,
@@ -548,6 +587,7 @@ import {
   listEvents,
   listForms,
   membersOnlyAudience,
+  requestFormDelete,
   requestFormPublish,
   reviewFormResponse,
   saveForm,
@@ -616,6 +656,17 @@ const form = ref(null);
 const openedFromEvent = ref(null);
 const formError = ref('');
 const eventCopyLock = computed(() => form.value?.scope === 'event' && !!form.value?.event_id);
+const pendingFormNote = computed(() => {
+  if (!form.value?.pending_request_id) return '';
+  if (form.value.pending_request_type === 'form_delete') {
+    return isSuperAdmin.value
+      ? 'An organizer asked to remove this form. Approve or reject it in Requests.'
+      : 'Waiting for a Super Admin to remove it. Cancel the request to edit it.';
+  }
+  return isSuperAdmin.value
+    ? 'A Head asked to publish this form. Approve or reject it in Requests.'
+    : 'Waiting for a Super Admin to publish it. Cancel the request to edit it.';
+});
 const eventBoundLock = computed(
   () => !!openedFromEvent.value || !!(form.value?.id && form.value.event_id)
 );
@@ -1033,16 +1084,83 @@ async function archive(f) {
   }
 }
 
-async function cancelPublish(f) {
+async function cancelPending(f) {
   busy.value = true;
   error.value = '';
   try {
     await cancelRequest(f.pending_request_id);
-    notice.value = 'Request cancelled. The form is a draft you can edit again.';
+    notice.value =
+      f.pending_request_type === 'form_delete'
+        ? 'Request cancelled.'
+        : 'Request cancelled. The form is a draft you can edit again.';
     await load();
     emit('changed');
   } catch (e) {
     error.value = errorText(e);
+  } finally {
+    busy.value = false;
+  }
+}
+
+function removeConfirmCopy(f) {
+  return f.event_id
+    ? 'This deletes the form and every response forever. The event can then be set to No form.'
+    : 'This deletes the form and every response forever.';
+}
+
+async function removeForm(f) {
+  const yes = await askConfirm({
+    title: `Remove “${f.title}”?`,
+    message: removeConfirmCopy(f),
+    confirmLabel: 'Remove form',
+    danger: true,
+  });
+  if (!yes) return;
+  busy.value = true;
+  error.value = '';
+  formError.value = '';
+  try {
+    await deleteLoungeForm(f.id);
+    notice.value = 'Form removed.';
+    if (form.value?.id === f.id) {
+      form.value = null;
+      dlg.value?.close();
+    }
+    await load();
+    emit('changed');
+  } catch (e) {
+    const text = errorText(e);
+    if (form.value) formError.value = text;
+    else error.value = text;
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function askRemoveForm(f) {
+  const yes = await askConfirm({
+    title: `Ask Super Admin to remove “${f.title}”?`,
+    message: 'A Super Admin has to delete it. That cannot be undone after they approve.',
+    confirmLabel: 'Ask Super Admin',
+    danger: true,
+  });
+  if (!yes) return;
+  busy.value = true;
+  error.value = '';
+  formError.value = '';
+  try {
+    await requestFormDelete(f.id);
+    notice.value = 'Sent to a Super Admin.';
+    await load();
+    if (form.value?.id === f.id) {
+      const updated = forms.value.find((row) => row.id === f.id);
+      if (updated) Object.assign(form.value, updated);
+    }
+    emit('changed');
+  } catch (e) {
+    const text = errorText(e);
+    if (form.value) formError.value = text;
+    else error.value = text;
   } finally {
     busy.value = false;
   }

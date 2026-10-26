@@ -69,6 +69,7 @@ export const RANGES = [
 const REQUEST_DOES = {
   event_publish: 'publish an event house-wide',
   form_publish: 'publish a form',
+  form_delete: 'remove a form',
   member_deletion: 'delete',
   member_blacklist: 'blacklist',
   member_hard_delete: 'permanently erase',
@@ -132,6 +133,11 @@ function requestSentence(r, verb) {
   if (v.type === 'form_publish')
     return {
       parts: [...parts, 'publishing ', record(r, v.form_title || 'a form')],
+      note: reason(nv(r)),
+    };
+  if (v.type === 'form_delete')
+    return {
+      parts: [...parts, 'removing ', record(r, v.form_title || 'a form')],
       note: reason(nv(r)),
     };
   return {
@@ -330,6 +336,14 @@ const ACTIONS = {
     (r, ctx) => ({
       parts: [actor(r), ` ${approved(r)} `, subject(r, 'a member', "'s"), ' region change'],
       note: arrow(ctx.region(ov(r).from_region_id), ctx.region(ov(r).to_region_id)),
+    }),
+  ],
+  'form.delete': [
+    'forms',
+    'Form removed',
+    (r) => ({
+      parts: [actor(r), ' removed the form ', record(r, ov(r).title || 'a form')],
+      note: ov(r).response_count != null ? `${ov(r).response_count} responses deleted` : null,
     }),
   ],
   'form.save': [
@@ -549,7 +563,7 @@ export function recordLink(row) {
     case 'events':
       return id ? ['events', id] : null;
     case 'lounge_forms':
-      return id ? ['forms', id] : null;
+      return row.action === 'form.delete' || !id ? null : ['forms', id];
     case 'form_responses':
       return nv(row).form_id ? ['forms', nv(row).form_id] : null;
     case 'announcements':

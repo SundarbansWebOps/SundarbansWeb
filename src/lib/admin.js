@@ -48,6 +48,7 @@ export const TEMPLATE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 export const REQUEST_LABEL = {
   event_publish: 'Publish house-wide event',
   form_publish: 'Publish form',
+  form_delete: 'Remove form',
   member_deletion: 'Delete member',
   member_blacklist: 'Blacklist member',
   member_hard_delete: 'Erase permanently',
@@ -722,13 +723,20 @@ export async function listForms() {
     // Head/Co-Head forms waiting for a Super Admin (RLS: the requester sees their own, Super Admins all).
     supabase
       .from('approval_requests')
-      .select('id, target_form_id')
-      .eq('type', 'form_publish')
+      .select('id, target_form_id, type')
+      .in('type', ['form_publish', 'form_delete'])
       .eq('status', 'pending')
       .then(unwrap),
   ]);
-  const pendingByForm = new Map(pending.map((r) => [r.target_form_id, r.id]));
-  return forms.map((f) => ({ ...f, pending_request_id: pendingByForm.get(f.id) ?? null }));
+  const pendingByForm = new Map(pending.map((r) => [r.target_form_id, r]));
+  return forms.map((f) => {
+    const req = pendingByForm.get(f.id);
+    return {
+      ...f,
+      pending_request_id: req?.id ?? null,
+      pending_request_type: req?.type ?? null,
+    };
+  });
 }
 
 export const saveForm = (form) => loungeSaveForm(form);
@@ -799,6 +807,12 @@ export const requestFormPublish = (formId, reason) =>
   supabase
     .rpc('request_form_publish', { p_form_id: formId, p_reason: reason || null })
     .then(unwrap);
+
+export const requestFormDelete = (formId, reason) =>
+  supabase.rpc('request_form_delete', { p_form_id: formId, p_reason: reason || null }).then(unwrap);
+
+export const deleteLoungeForm = (formId) =>
+  supabase.rpc('delete_lounge_form', { p_form_id: formId }).then(unwrap);
 
 export async function exportFormResponses(formId) {
   return asList(await loungeExportFormResponses(formId));
@@ -1131,7 +1145,7 @@ export const reviewCertificateNameRequest = (id, approve, note = '') =>
 // Approval requests
 
 const REQUEST_COLS = `id, type, status, reason, requested_change, target_snapshot, review_note, requested_at,
-  reviewed_at, requested_by, reviewed_by, target_member_id,
+  reviewed_at, requested_by, reviewed_by, target_member_id, target_form_id,
   target:members!approval_requests_target_member_id_fkey(full_name, preferred_name, email, member_code, region_id),
   requester:members!approval_requests_requested_by_fkey(full_name)`;
 

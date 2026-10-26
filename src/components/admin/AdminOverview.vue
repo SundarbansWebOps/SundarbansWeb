@@ -279,7 +279,7 @@ const summary = computed(() => {
 const requestTarget = (request) =>
   request.type === 'event_publish'
     ? request.requested_change?.event_name || 'Event'
-    : request.type === 'form_publish'
+    : request.type === 'form_publish' || request.type === 'form_delete'
       ? request.requested_change?.form_title || 'Form'
       : nameOf(request.target || request.member || request.target_snapshot?.member);
 const isLive = (event) =>
