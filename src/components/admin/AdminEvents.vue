@@ -321,13 +321,43 @@
             }}
           </p>
           <p v-else class="adm-note">No form yet.</p>
+          <p v-if="boundForm?.pending_request_type === 'form_delete'" class="adm-note">
+            Waiting for a Super Admin to remove this form.
+          </p>
           <button
             type="button"
             class="adm-btn ghost"
-            :disabled="busy || !form.name"
+            :disabled="busy || !form.name || !!boundForm?.pending_request_id"
             @click="openFormEditor"
           >
             {{ boundForm ? 'Edit form' : 'Create form' }}
+          </button>
+          <button
+            v-if="boundForm?.pending_request_id && !isSuperAdmin"
+            type="button"
+            class="adm-btn danger"
+            :disabled="busy"
+            @click="cancelFormRequest"
+          >
+            Cancel request
+          </button>
+          <button
+            v-else-if="boundForm && isSuperAdmin"
+            type="button"
+            class="adm-btn danger"
+            :disabled="busy"
+            @click="removeBoundForm"
+          >
+            Remove form
+          </button>
+          <button
+            v-else-if="boundForm"
+            type="button"
+            class="adm-btn danger"
+            :disabled="busy"
+            @click="askRemoveBoundForm"
+          >
+            Ask Super Admin to remove
           </button>
           <small v-if="!form.name">Name the event first.</small>
         </div>
@@ -506,6 +536,7 @@ import {
   canManageEvent,
   cancelRequest,
   deleteEvent,
+  deleteLoungeForm,
   downloadCsv,
   exportEventRecords,
   flattenExportRows,
@@ -524,6 +555,7 @@ import {
   releaseCertificates,
   saveEvent,
   requestEventPublish,
+  requestFormDelete,
   setEventCancelled,
   suggestMeetMapping,
   syncBoundEventForm,
@@ -940,6 +972,62 @@ function clearPoster() {
 }
 
 const cancelPublish = (e) => act(() => cancelRequest(e.pending_request_id));
+
+async function refreshBoundForm() {
+  if (!form.value?.id) {
+    boundForm.value = null;
+    return;
+  }
+  boundForm.value = boundFormForEvent(await listForms().catch(() => []), form.value.id);
+}
+
+async function runBoundForm(run) {
+  busy.value = true;
+  formError.value = '';
+  try {
+    await run();
+    emit('changed');
+  } catch (e) {
+    formError.value = friendly(e);
+  } finally {
+    busy.value = false;
+  }
+}
+
+const cancelFormRequest = () =>
+  runBoundForm(async () => {
+    await cancelRequest(boundForm.value.pending_request_id);
+    await refreshBoundForm();
+  });
+
+async function removeBoundForm() {
+  const yes = await askConfirm({
+    title: `Remove “${boundForm.value.title}”?`,
+    message:
+      'This deletes the form and every response forever. You can then set this event to No form.',
+    confirmLabel: 'Remove form',
+    danger: true,
+  });
+  if (!yes) return;
+  runBoundForm(async () => {
+    await deleteLoungeForm(boundForm.value.id);
+    boundForm.value = null;
+  });
+}
+
+async function askRemoveBoundForm() {
+  const yes = await askConfirm({
+    title: `Ask Super Admin to remove “${boundForm.value.title}”?`,
+    message: 'A Super Admin has to delete it. That cannot be undone after they approve.',
+    confirmLabel: 'Ask Super Admin',
+    danger: true,
+  });
+  if (!yes) return;
+  runBoundForm(async () => {
+    await requestFormDelete(boundForm.value.id);
+    await refreshBoundForm();
+  });
+}
 
 const templateBusy = ref(false);
 const templateDragging = ref(false);

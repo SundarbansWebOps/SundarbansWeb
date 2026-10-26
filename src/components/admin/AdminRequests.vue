@@ -126,7 +126,10 @@
         </div>
         <p class="consequence">{{ requestConsequence(selected) }}</p>
         <button
-          v-if="selected.type === 'form_publish' && selected.target_form_id"
+          v-if="
+            (selected.type === 'form_publish' || selected.type === 'form_delete') &&
+            selected.target_form_id
+          "
           type="button"
           class="adm-btn ghost small"
           @click="emit('navigate', 'forms', selected.target_form_id)"
@@ -286,7 +289,7 @@ const targetOf = (r) => r.target || r.target_snapshot?.member || r.member;
 const targetName = (r) =>
   r.type === 'event_publish'
     ? r.requested_change?.event_name || 'Event'
-    : r.type === 'form_publish'
+    : r.type === 'form_publish' || r.type === 'form_delete'
       ? r.requested_change?.form_title || 'Form'
       : nameOf(targetOf(r));
 const requestLabel = (r) =>

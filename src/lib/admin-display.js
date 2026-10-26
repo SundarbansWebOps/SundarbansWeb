@@ -28,6 +28,8 @@ export function requestConsequence(request) {
         'The position changes after approval. Admin access follows the new assignment.',
       event_publish: 'The event is published for its audience across the house.',
       form_publish: 'The form is published and opens for its audience.',
+      form_delete:
+        'The form and every response are deleted forever. A linked event can then be set to No form.',
       region:
         'The student moves to the selected region. Coordinator access follows the new region.',
       certificate: 'The new certificate name is used for future certificates.',
@@ -43,6 +45,14 @@ export function requestDiff(request, lookups) {
     return [{ field: 'Publication', before: 'Draft', after: 'Published for the house' }];
   if (request.type === 'form_publish')
     return [{ field: 'Publication', before: 'Draft', after: 'Published' }];
+  if (request.type === 'form_delete')
+    return [
+      {
+        field: 'Form',
+        before: request.requested_change?.form_title || 'This form',
+        after: 'Deleted forever',
+      },
+    ];
   if (request.type === 'community_tag_removal')
     return [
       {
