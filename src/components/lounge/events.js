@@ -84,6 +84,26 @@ export function status(e, now = clock.value) {
   return 'upcoming';
 }
 
+export const JOIN_EARLY_MS = 15 * 60 * 1000;
+
+export function meetHref(e) {
+  return e?.meet_link || e?.gmail_link || '';
+}
+
+// Meet opens 15 minutes before start. The event stays upcoming until starts_at.
+export function joinOpen(e, now = clock.value) {
+  if (!meetHref(e)) return false;
+  const s = status(e, now);
+  if (s === 'live') return true;
+  if (s !== 'upcoming') return false;
+  const start = Date.parse(e?.starts_at);
+  return Number.isFinite(start) && now >= start - JOIN_EARLY_MS;
+}
+
+export function joinEarly(e, now = clock.value) {
+  return status(e, now) === 'upcoming' && joinOpen(e, now);
+}
+
 export const visible = computed(() =>
   lounge.events.filter((e) => liveOn.value || status(e) !== 'live')
 );

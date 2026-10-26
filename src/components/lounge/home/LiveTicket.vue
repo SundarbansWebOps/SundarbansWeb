@@ -7,11 +7,17 @@
 -->
 <template>
   <div v-if="live || next" class="tkw">
-    <article v-loop class="tk" :class="{ on: !!live }" :aria-label="live ? 'Live now' : 'Next up'">
+    <article
+      v-loop
+      class="tk"
+      :class="{ on: !!live }"
+      :aria-label="live ? 'Live now' : early ? 'Join early' : 'Next up'"
+    >
       <div class="tk-body">
         <p class="tk-kick">
           <i v-if="live" class="tk-dot" aria-hidden="true"></i>
           <template v-if="live">Live now · {{ scope(live) }}</template>
+          <template v-else-if="early">Join early · {{ scope(next) }}</template>
           <template v-else>Next up · {{ scope(next) }}</template>
         </p>
         <h2 class="tk-title">{{ (live || next).name }}</h2>
@@ -29,9 +35,9 @@
           </template>
         </p>
         <a
-          v-if="live"
+          v-if="live || early"
           class="tk-join"
-          :href="live.meet_link || live.gmail_link"
+          :href="meetHref(live || next)"
           target="_blank"
           rel="noopener noreferrer"
           >Join on Meet <span aria-hidden="true">→</span></a
@@ -57,7 +63,9 @@ import { vLoop } from './motion.js';
 import {
   clock as now,
   commOf,
+  joinEarly,
   liveNow as live,
+  meetHref,
   nextUp as next,
   span,
   until,
@@ -68,6 +76,7 @@ import {
    most distracting thing on B's Home. */
 
 /* The number only ("1 h 04 min"), so it can roll on its own when it changes. */
+const early = computed(() => !live.value && joinEarly(next.value));
 const endsIn = computed(() => (live.value ? span(Date.parse(live.value.ends_at) - now.value) : ''));
 
 /* A printed serial from the event's id, so each ticket has its own number. */

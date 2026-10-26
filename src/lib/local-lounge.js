@@ -103,6 +103,18 @@ const defaults = {
       entry_mode: 'open',
       meet_link: 'https://example.invalid/local-meet',
     },
+    {
+      id: 'local-early',
+      name: 'Local join-early session',
+      starts_at: iso(0.2),
+      ends_at: iso(1.2),
+      stage: 'upcoming',
+      community_id: 2,
+      region_id: null,
+      audience_cohorts: [],
+      meet_link: 'https://example.invalid/local-early-meet',
+      registration: null,
+    },
     ...[1, 2].map((id) => ({
       id: `local-past-${id}`,
       name: `${regions.find((r) => r.id === id).name} archive fixture`,

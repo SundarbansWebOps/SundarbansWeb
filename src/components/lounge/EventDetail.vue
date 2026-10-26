@@ -15,9 +15,10 @@
 
       <!-- Info -->
       <template v-if="step === 'info'">
-        <p class="evd-kick gp-kicker" :class="{ 'is-live': st === 'live' }">
+        <p class="evd-kick gp-kicker" :class="{ 'is-live': st === 'live' || early }">
           <template v-if="st === 'live'">Live now · </template>
-          <span :class="{ 'evd-comm': st !== 'live' }">{{ commOf(event).label }}</span>
+          <template v-else-if="early">Join early · </template>
+          <span :class="{ 'evd-comm': st !== 'live' && !early }">{{ commOf(event).label }}</span>
           <template v-if="event.type"> · {{ event.type }}</template>
         </p>
         <h2 id="ed-h" class="evd-h">{{ event.name }}</h2>
@@ -58,9 +59,18 @@
         </div>
 
         <div v-else-if="st === 'upcoming'" class="evd-act">
+          <div v-if="early" class="evd-air gp-inset">
+            <p class="gp-title">Join early</p>
+            <p class="gp-meta">Starts {{ until(event.starts_at) }}.</p>
+            <a class="gp-btn is-big" :href="joinHref" target="_blank" rel="noopener noreferrer">
+              Join on Meet <span aria-hidden="true">→</span>
+            </a>
+          </div>
           <p v-if="isOpenSession(event)" class="evd-plain">
-            <b>Open to all members.</b> No registration. Join on Meet when it starts,
-            {{ until(event.starts_at) }}.
+            <b>Open to all members.</b> No registration.
+            <template v-if="!early">
+              Join on Meet 15 minutes before it starts, {{ until(event.starts_at) }}.
+            </template>
           </p>
           <template v-else-if="rejected">
             <p class="evd-plain" role="status">
@@ -75,16 +85,17 @@
             <span class="evd-tick" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="m5 12.5 4.2 4L19 7" /></svg>
             </span>
-            <span
-              ><b>You're registered.</b> The Join button shows up in your Lounge when it starts,
-              {{ until(event.starts_at) }}.</span
+            <span v-if="early"><b>You're registered.</b></span>
+            <span v-else
+              ><b>You're registered.</b> The Join button shows up in your Lounge 15 minutes before
+              it starts, {{ until(event.starts_at) }}.</span
             >
           </p>
           <template v-else-if="regOpen">
             <button type="button" class="gp-btn is-big" @click="step = 'form'">Register</button>
-            <p class="evd-small">Starts {{ until(event.starts_at) }}.</p>
+            <p v-if="!early" class="evd-small">Starts {{ until(event.starts_at) }}.</p>
           </template>
-          <p v-else class="evd-plain">Registration is not open for this event.</p>
+          <p v-else-if="!early" class="evd-plain">Registration is not open for this event.</p>
         </div>
 
         <div v-else class="evd-act">
@@ -153,7 +164,7 @@
         <h2 id="ed-h" class="evd-h">{{ youreIn }}</h2>
         <p>
           <b>{{ event.name }}</b> starts {{ until(event.starts_at) }}. The Join button shows up in
-          your Lounge then. Stay 20 minutes and you get a certificate.
+          your Lounge 15 minutes before it starts. Stay 20 minutes and you get a certificate.
         </p>
         <p v-if="invite" class="ff-invite">
           WhatsApp invite:
@@ -184,7 +195,9 @@ import {
   endsIn,
   isOpenSession,
   isRegistered,
+  joinEarly,
   markOf,
+  meetHref,
   spanOf,
   status,
   until,
@@ -210,6 +223,8 @@ const busy = ref(false);
 const error = ref('');
 const invite = ref('');
 const st = computed(() => status(props.event));
+const early = computed(() => joinEarly(props.event));
+const joinHref = computed(() => meetHref(props.event));
 const mark = computed(() => markOf(props.event));
 const cert = computed(() => certOf(props.event));
 const regForm = computed(() => formByEvent(props.event.id));

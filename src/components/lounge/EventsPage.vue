@@ -134,6 +134,9 @@
                     <p v-if="status(e) === 'live'" class="er-kick gp-kicker is-live">
                       Live now · {{ commOf(e).label }}
                     </p>
+                    <p v-else-if="joinEarly(e)" class="er-kick gp-kicker is-live">
+                      Join early · {{ commOf(e).label }}
+                    </p>
                     <h3>
                       <button
                         type="button"
@@ -164,11 +167,11 @@
                     </p>
                   </div>
                   <div class="er-side">
-                    <template v-if="status(e) === 'live'">
+                    <template v-if="status(e) === 'live' || joinEarly(e)">
                       <a
                         v-if="e.meet_link || e.gmail_link"
                         class="er-join gp-btn"
-                        :href="e.meet_link || e.gmail_link"
+                        :href="meetHref(e)"
                         target="_blank"
                         rel="noopener noreferrer"
                         >Join on Meet <span aria-hidden="true">→</span
@@ -284,7 +287,9 @@ import {
   eventYear,
   isOpenSession,
   isRegistered,
+  joinEarly,
   markOf,
+  meetHref,
   mine,
   soon,
   status,

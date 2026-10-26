@@ -1,7 +1,6 @@
 <!--
-  Events: "Coming up" (upcoming events an organiser marked Public), then the public archive:
-  swell chart → month-by-month log. Members-only events stay in the House lounge until they end.
-  (Meetups live on House.)
+  Events: live and upcoming Public events at the top, then the archive
+  (swell chart → month-by-month log). Joining is in Launch. Meetups live on House.
 -->
 <template>
   <main id="main-content" class="wrap" tabindex="-1">
@@ -14,21 +13,43 @@
         </div>
       </dl>
       <p v-if="publicCatalog.error" class="sub" role="alert">{{ publicCatalog.error }}</p>
-      <p v-else-if="!first" class="sub">Past events the house has published.</p>
-      <p v-else class="sub">
-        Everything the house has run since {{ MONTH[first.m] }} {{ first.y }}. More upcoming events
-        are announced to members in the House lounge.
-      </p>
+      <p v-else class="sub">{{ sub }}</p>
     </header>
+
+    <section
+      v-if="live.length"
+      v-inview
+      class="soon live-band rise"
+      style="--i: 1"
+      aria-labelledby="live-h"
+    >
+      <h2 id="live-h" class="soon-h live-h">
+        <i class="live-dot" aria-hidden="true" />
+        Live now
+        <span class="soon-n mono">{{ live.length }}</span>
+      </h2>
+      <div class="cards">
+        <EventCard
+          v-for="(e, i) in live"
+          :key="e.id"
+          :e="e"
+          :i="i"
+          @open="(id, ev2) => openEvent(id, ev2)"
+        />
+      </div>
+    </section>
 
     <section
       v-if="upcoming.length"
       v-inview
       class="soon rise"
-      style="--i: 1"
+      :style="{ '--i': live.length ? 2 : 1 }"
       aria-labelledby="soon-h"
     >
-      <h2 id="soon-h" class="soon-h">Coming up</h2>
+      <h2 id="soon-h" class="soon-h">
+        Coming up
+        <span class="soon-n mono">{{ upcoming.length }}</span>
+      </h2>
       <div class="cards">
         <EventCard
           v-for="(e, i) in upcoming"
@@ -163,6 +184,7 @@ import {
   ev,
   events,
   groupByMonth,
+  live,
   loadPublicEvents,
   matches,
   monthKey,
@@ -183,11 +205,19 @@ const findEl = ref(null);
 const chart = ref(null);
 
 const dated = computed(() => events.filter((e) => e.at));
+const happening = computed(() => [...live, ...upcoming]);
 // The sheet pages through the list the open event belongs to.
 const sheetList = computed(() =>
-  upcoming.some((e) => e.id === ev.open) ? upcoming : visible.value
+  happening.value.some((e) => e.id === ev.open) ? happening.value : visible.value
 );
 const first = computed(() => dated.value.at(-1));
+const sub = computed(() => {
+  const since = first.value
+    ? `Everything the house has run since ${MONTH[first.value.m]} ${first.value.y}.`
+    : 'Past events the house has published.';
+  if (happening.value.length) return `${since} Log in to Launch to join what’s live or coming up.`;
+  return `${since} More upcoming events are announced to members in Launch.`;
+});
 // The swell chart shows last calendar year and this year up to today; the log below keeps the full archive.
 const chartEvents = computed(() => {
   const now = new Date();
@@ -266,11 +296,17 @@ watch(
   }
 );
 
-const STATS = computed(() => [
-  { key: 'events', label: 'events', to: events.length },
-  { key: 'months', label: 'active months', to: new Set(dated.value.map(monthKey)).size },
-]);
-const shown = reactive({ events: 0, months: 0 });
+const STATS = computed(() => {
+  const stats = [];
+  if (live.length) stats.push({ key: 'live', label: 'live now', to: live.length });
+  if (upcoming.length) stats.push({ key: 'upcoming', label: 'upcoming', to: upcoming.length });
+  stats.push(
+    { key: 'events', label: 'events', to: events.length },
+    { key: 'months', label: 'active months', to: new Set(dated.value.map(monthKey)).size }
+  );
+  return stats;
+});
+const shown = reactive({ live: 0, upcoming: 0, events: 0, months: 0 });
 function countUp() {
   const stats = STATS.value;
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -391,10 +427,35 @@ h1 {
   padding: 6px 0 10px;
 }
 .soon-h {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
   margin: 0 0 18px;
   font-size: clamp(24px, 2.6vw, 30px);
   font-weight: 750;
   letter-spacing: -0.035em;
+}
+.soon-n {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-3);
+  letter-spacing: 0;
+}
+.live-h {
+  align-items: center;
+}
+.live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--verm);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--verm) 55%, transparent);
+  animation: live-pulse 1.8s var(--ease-out) infinite;
+}
+@keyframes live-pulse {
+  70% {
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--verm) 0%, transparent);
+  }
 }
 .controls {
   display: flex;

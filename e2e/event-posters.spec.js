@@ -146,7 +146,9 @@ test('a poster on a new event saves the draft first, then uploads', async ({ pag
   expect(signed).toEqual({ event_id: EVENT_ID });
 });
 
-test('the public Events page shows Public upcoming events above the archive', async ({ page }) => {
+test('the public Events page shows Public live and upcoming events above the archive', async ({
+  page,
+}) => {
   await mockSupabase(page, {
     signedIn: false,
     data: {
@@ -164,6 +166,17 @@ test('the public Events page shows Public upcoming events above the archive', as
           stage: 'upcoming',
         },
         {
+          id: 'e4000000-0000-4000-8000-000000000003',
+          name: 'Night quiz',
+          description: 'Live house quiz',
+          starts_at: soon(-0.01),
+          ends_at: soon(0.04),
+          event_type: 'Quiz',
+          wing: 'talks',
+          is_public: true,
+          stage: 'live',
+        },
+        {
           id: 'e4000000-0000-4000-8000-000000000002',
           name: 'Old open mic',
           starts_at: soon(-40),
@@ -176,7 +189,15 @@ test('the public Events page shows Public upcoming events above the archive', as
     },
   });
   await page.goto('/#/events');
-  const soonSection = page.getByRole('region', { name: 'Coming up' });
+  await expect(page.getByText('live now', { exact: true })).toBeVisible();
+  await expect(page.getByText('upcoming', { exact: true })).toBeVisible();
+
+  const liveSection = page.getByRole('region', { name: /Live now/ });
+  await expect(liveSection).toBeVisible();
+  await expect(liveSection.getByText('Night quiz').first()).toBeVisible();
+  await expect(liveSection.getByText('House fest')).toHaveCount(0);
+
+  const soonSection = page.getByRole('region', { name: /Coming up/ });
   await expect(soonSection).toBeVisible();
   await expect(soonSection.getByText('House fest').first()).toBeVisible();
   await expect(soonSection.getByText('Old open mic')).toHaveCount(0);
@@ -185,6 +206,14 @@ test('the public Events page shows Public upcoming events above the archive', as
   ).toBeVisible();
 
   await soonSection.getByText('House fest').first().click();
-  const register = page.getByRole('link', { name: /Register for this event/ });
+  await expect(page.getByRole('button', { name: /Log in to Launch to join/ })).toBeVisible();
+  const register = page.getByRole('link', { name: /Open the sign-up form/ });
   await expect(register).toHaveAttribute('href', 'https://forms.gle/example');
+  await page.getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  await liveSection.getByText('Night quiz').first().click();
+  await expect(page.getByRole('button', { name: /Log in to Launch to join/ })).toBeVisible();
+  await expect(page.getByText('Happening now')).toBeVisible();
+  await expect(page.getByRole('link', { name: /Join on Meet/ })).toHaveCount(0);
 });

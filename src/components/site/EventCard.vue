@@ -29,7 +29,11 @@
         />
       </template>
       <TypePoster v-else :e="e" />
-      <span v-if="e.at && e.image" class="stamp mono">
+      <span v-if="e.stage === 'live'" class="stamp live-stamp">
+        <b>Live</b>
+        <small>now</small>
+      </span>
+      <span v-else-if="e.at && e.image" class="stamp mono">
         <b>{{ e.range || e.d || MONTH[e.m] }}</b>
         <small>{{ e.d ? MONTH[e.m] : e.y }}</small>
       </span>
@@ -158,6 +162,10 @@ const loaded = ref(false);
   font-size: 9.5px;
   font-weight: 600;
   letter-spacing: 0.14em;
+}
+.live-stamp {
+  border-color: var(--verm);
+  color: var(--verm);
 }
 .meta {
   display: flex;
