@@ -562,7 +562,10 @@ export async function saveEvent(event, { publish = false, unpublish = false } = 
     region_id: event.region_id || null,
     audience_cohorts: event.audience_cohorts ?? [],
     attendance_mode: event.attendance_mode || 'meet',
-    certificate_template_url: event.certificate_template_url || null,
+    certificate_template_url:
+      event.entry_mode === 'open' && !event.certificates_released_at
+        ? null
+        : event.certificate_template_url || null,
     archive: !!event.archive,
     source_key: event.source_key || null,
     display_date: event.display_date || null,

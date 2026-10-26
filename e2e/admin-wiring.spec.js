@@ -149,7 +149,96 @@ test('event editor saves an open session with no registration form', async ({ pa
   ).toBeVisible();
   await dialog.getByRole('button', { name: 'Save draft' }).click();
   const saved = await callTo(calls, '/rest/v1/events', 'POST');
-  expect(JSON.parse(saved.body)).toMatchObject({ name: 'House hour', entry_mode: 'open' });
+  expect(JSON.parse(saved.body)).toMatchObject({
+    name: 'House hour',
+    entry_mode: 'open',
+    certificate_template_url: null,
+  });
+});
+
+test('publishing an open session without a Meet link is refused', async ({ page }) => {
+  const eventId = 'e0000000-0000-4000-8000-000000000022';
+  const calls = await mockSupabase(page, {
+    as: 'sa',
+    data: { events: [{ id: eventId }] },
+  });
+  await page.goto('/#/admin?tab=events');
+  await page.getByRole('button', { name: 'New event' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Name').fill('House hour');
+  await pick(dialog, 'How members attend', 'Open to all — no form');
+  await dialog.getByRole('button', { name: 'Publish' }).click();
+  await expect(
+    dialog.getByText('Open sessions need a meeting link that starts with https://')
+  ).toBeVisible();
+  expect(calls.some((c) => c.path === '/rest/v1/events' && /^(POST|PATCH)$/.test(c.method))).toBe(
+    false
+  );
+});
+
+test('switching an event to open clears the certificate template', async ({ page }) => {
+  const eventId = 'e0000000-0000-4000-8000-000000000023';
+  const event = {
+    id: eventId,
+    name: 'Workshop',
+    starts_at: '2026-12-01T10:00:00Z',
+    ends_at: '2026-12-01T12:00:00Z',
+    published_at: '2026-10-01T00:00:00Z',
+    attendance_mode: 'meet',
+    certificate_template_url: 'https://res.cloudinary.com/demo/cert.png',
+    certificates_released_at: null,
+    entry_mode: 'register',
+    archive: false,
+    cancelled_at: null,
+    community_id: null,
+    region_id: null,
+    gmail_link: 'https://meet.google.com/abc-defg-hij',
+  };
+  const calls = await mockSupabase(page, { as: 'sa', data: { events: [event] } });
+  await page.goto('/#/admin?tab=events');
+  await page.getByRole('button', { name: 'Edit' }).click();
+  const dialog = page.getByRole('dialog');
+  await pick(dialog, 'How members attend', 'Open to all — no form');
+  await dialog.getByRole('button', { name: 'Save changes' }).click();
+  const saved = await callTo(calls, '/rest/v1/events', 'PATCH');
+  expect(JSON.parse(saved.body)).toMatchObject({
+    entry_mode: 'open',
+    certificate_template_url: null,
+  });
+});
+
+test('an event-scoped form cannot bind to an open session', async ({ page }) => {
+  const eventId = 'e0000000-0000-4000-8000-000000000024';
+  const calls = await mockSupabase(page, {
+    as: 'sa',
+    data: {
+      list_lounge_forms: [],
+      events: [
+        {
+          id: eventId,
+          name: 'House hour',
+          published_at: '2026-10-01T00:00:00Z',
+          ends_at: '2026-12-01T12:00:00Z',
+          archive: false,
+          cancelled_at: null,
+          entry_mode: 'open',
+          community_id: null,
+          region_id: null,
+        },
+      ],
+    },
+  });
+  await page.goto('/#/admin?tab=forms');
+  await page.getByRole('button', { name: 'New form' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Title').fill('Open signup');
+  await pick(dialog, 'Scope', 'Bound to an event');
+  await expect(dialog.getByText('No event can take a form.')).toBeVisible();
+  await dialog.getByRole('combobox', { name: 'Event' }).click();
+  await expect(dialog.getByRole('option', { name: /House hour/ })).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Publish' }).click();
+  await expect(dialog.getByText('Open sessions do not take a form.')).toBeVisible();
+  expect(calls.some((c) => c.path === '/rest/v1/rpc/save_lounge_form')).toBe(false);
 });
 
 test('form builder keeps field order, types, options and a post-submit invite', async ({

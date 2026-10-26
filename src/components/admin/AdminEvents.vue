@@ -454,7 +454,13 @@
           <button type="button" class="adm-btn ghost" :disabled="busy" @click="downloadRecords">
             Download records
           </button>
-          <button type="button" class="adm-btn mari" :disabled="busy" @click="release">
+          <button
+            v-if="ops.entry_mode !== 'open'"
+            type="button"
+            class="adm-btn mari"
+            :disabled="busy"
+            @click="release"
+          >
             Release certificates
           </button>
         </div>
@@ -765,6 +771,15 @@ function friendly(e) {
 }
 
 async function save(mode) {
+  const meet = (form.value.gmail_link || '').trim();
+  if (
+    form.value.entry_mode === 'open' &&
+    (mode === 'publish' || (form.value.published_at && mode !== 'unpublish')) &&
+    !/^https:\/\//i.test(meet)
+  ) {
+    formError.value = 'Open sessions need a meeting link that starts with https://';
+    return;
+  }
   if (
     mode === 'unpublish' &&
     !(await askConfirm({
@@ -1027,7 +1042,7 @@ async function downloadRecords() {
 }
 
 async function release() {
-  if (!ops.value) return;
+  if (!ops.value || ops.value.entry_mode === 'open') return;
   const yes = await askConfirm({
     title: 'Release certificates?',
     message:

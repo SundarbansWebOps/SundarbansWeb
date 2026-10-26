@@ -46,6 +46,7 @@
             Started {{ ago(event.starts_at) }} · <b>{{ endsIn(event) }}</b>
           </p>
           <a
+            v-if="event.meet_link || event.gmail_link"
             class="gp-btn is-big"
             :href="event.meet_link || event.gmail_link"
             target="_blank"
@@ -57,7 +58,11 @@
         </div>
 
         <div v-else-if="st === 'upcoming'" class="evd-act">
-          <template v-if="rejected">
+          <p v-if="isOpenSession(event)" class="evd-plain">
+            <b>Open to all members.</b> No registration. Join on Meet when it starts,
+            {{ until(event.starts_at) }}.
+          </p>
+          <template v-else-if="rejected">
             <p class="evd-plain" role="status">
               <b>Not approved.</b>
               {{ regForm.review_reason || 'The admins could not approve this registration.' }}
@@ -74,10 +79,6 @@
               ><b>You're registered.</b> The Join button shows up in your Lounge when it starts,
               {{ until(event.starts_at) }}.</span
             >
-          </p>
-          <p v-else-if="isOpenSession(event)" class="evd-plain">
-            <b>Open to all members.</b> No registration. Join on Meet when it starts,
-            {{ until(event.starts_at) }}.
           </p>
           <template v-else-if="regOpen">
             <button type="button" class="gp-btn is-big" @click="step = 'form'">Register</button>
@@ -220,7 +221,9 @@ const regOpen = computed(
 );
 /* An admin turned this registration down: it shows the reason and can be sent again. The
    registration itself stays listed wherever it already appears. */
-const rejected = computed(() => reviewOf(regForm.value) === 'rejected');
+const rejected = computed(
+  () => !isOpenSession(props.event) && reviewOf(regForm.value) === 'rejected'
+);
 
 /* Already registered: never show the form again. */
 const step = ref(
@@ -243,7 +246,7 @@ watch(step, async (s) => {
 });
 
 async function submit() {
-  if (st.value !== 'upcoming') {
+  if (st.value !== 'upcoming' || isOpenSession(props.event)) {
     step.value = 'info';
     return;
   }

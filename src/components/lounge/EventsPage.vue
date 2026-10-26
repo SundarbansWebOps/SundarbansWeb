@@ -166,6 +166,7 @@
                   <div class="er-side">
                     <template v-if="status(e) === 'live'">
                       <a
+                        v-if="e.meet_link || e.gmail_link"
                         class="er-join gp-btn"
                         :href="e.meet_link || e.gmail_link"
                         target="_blank"
@@ -175,7 +176,8 @@
                       >
                     </template>
                     <template v-else-if="status(e) === 'upcoming'">
-                      <span v-if="markOf(e)?.kind === 'rejected'" class="mark m-rejected">
+                      <span v-if="isOpenSession(e)" class="mark m-open">Open to all</span>
+                      <span v-else-if="markOf(e)?.kind === 'rejected'" class="mark m-rejected">
                         Not approved
                       </span>
                       <span v-else-if="isRegistered(e)" class="mark m-registered">
@@ -183,7 +185,6 @@
                           <path d="m5 12.5 4.2 4L19 7" /></svg
                         >Registered
                       </span>
-                      <span v-else-if="isOpenSession(e)" class="mark m-open">Open to all</span>
                       <span v-else-if="!registrationOpen(e)" class="mark">
                         Registration closed
                       </span>

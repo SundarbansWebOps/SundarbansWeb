@@ -147,7 +147,11 @@
             <label v-if="form.scope === 'event'" class="adm-field">
               <span>Event</span>
               <AdminSelect v-model="form.event_id" :options="eventSelectOptions" />
-              <small>Open sessions do not take a form.</small>
+              <small>{{
+                bindableEvents.length
+                  ? 'Open sessions do not take a form.'
+                  : 'No event can take a form. Open sessions do not take one.'
+              }}</small>
             </label>
           </div>
         </section>
@@ -635,21 +639,30 @@ const approvalScope = computed(
       (form.value?.scope === 'event' &&
         events.value.find((e) => e.id === form.value.event_id)?.community_id != null))
 );
-const eventOptions = computed(() => {
-  const manageable = events.value.filter(canManageEvent);
-  const eligible = manageable.filter(
+const bindableEvents = computed(() =>
+  events.value.filter(
     (event) =>
+      canManageEvent(event) &&
       event.entry_mode !== 'open' &&
       !event.archive &&
       !event.cancelled_at &&
       event.published_at &&
       event.ends_at &&
       new Date(event.ends_at) > new Date()
-  );
-  const selected = manageable.find((event) => event.id === form.value?.event_id);
-  return selected && !eligible.some((event) => event.id === selected.id)
-    ? [selected, ...eligible]
-    : eligible;
+  )
+);
+const eventOptions = computed(() => {
+  const eligible = bindableEvents.value;
+  const selected = events.value.find((event) => event.id === form.value?.event_id);
+  if (
+    selected &&
+    canManageEvent(selected) &&
+    selected.entry_mode !== 'open' &&
+    !eligible.some((event) => event.id === selected.id)
+  ) {
+    return [selected, ...eligible];
+  }
+  return eligible;
 });
 const eventStatus = (event) => {
   if (!event.published_at) return 'draft';
@@ -816,11 +829,9 @@ function onScope() {
       : (form.value.community_id ?? props.lookups.communities[0]?.id);
   } else {
     form.value.region_id = form.value.community_id = null;
-    const bindable = events.value.filter(
-      (event) => canManageEvent(event) && event.entry_mode !== 'open'
-    );
-    const current = events.value.find((event) => event.id === form.value.event_id);
-    if (!current || current.entry_mode === 'open') form.value.event_id = bindable[0]?.id ?? null;
+    const eligible = bindableEvents.value;
+    const current = eligible.find((event) => event.id === form.value.event_id);
+    form.value.event_id = current?.id ?? eligible[0]?.id ?? null;
   }
 }
 
@@ -872,8 +883,17 @@ function fieldPayload(field) {
 }
 
 async function save(mode) {
-  busy.value = true;
   formError.value = '';
+  if (form.value.scope === 'event') {
+    const bound = events.value.find((event) => event.id === form.value.event_id);
+    if (!form.value.event_id || bound?.entry_mode === 'open') {
+      formError.value = bindableEvents.value.length
+        ? 'Choose an event that takes a registration form.'
+        : 'Open sessions do not take a form.';
+      return;
+    }
+  }
+  busy.value = true;
   try {
     const published_at =
       mode === 'publish'

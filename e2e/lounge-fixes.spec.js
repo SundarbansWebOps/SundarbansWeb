@@ -157,7 +157,15 @@ test('an open session shows Open to all and ignores a linked form', async ({ pag
     data: {
       list_lounge_events: [open, closed],
       list_lounge_forms: [
-        { id: FORM, event_id: open.id, is_open: true, accepting_responses: true, fields: [] },
+        {
+          id: FORM,
+          event_id: open.id,
+          is_open: true,
+          accepting_responses: true,
+          fields: [],
+          review_status: 'rejected',
+          review_reason: 'Turned down',
+        },
       ],
     },
   });
@@ -171,6 +179,7 @@ test('an open session shows Open to all and ignores a linked form', async ({ pag
   );
   await openRow.getByRole('button', { name: 'House hour', exact: true }).click();
   await expect(page.getByText(/Open to all members/)).toBeVisible();
+  await expect(page.getByText('Not approved.')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Register', exact: true })).toHaveCount(0);
 });
 
