@@ -186,6 +186,66 @@ function replaceEvents(list, happening = []) {
 
 replaceEvents(snapshot);
 
+function isoFrom(ms) {
+  return new Date(ms).toISOString();
+}
+
+// Local Vite only. Three throwaway Public events so the live/upcoming bands can be clicked.
+function localDemoHappening() {
+  if (!import.meta.env.DEV) return [];
+  const host = location.hostname;
+  if (host !== '127.0.0.1' && host !== 'localhost') return [];
+  const now = Date.now();
+  const day = 864e5;
+  return [
+    fromPublicRow({
+      id: 'demo-live',
+      name: 'Night quiz',
+      description: 'Demo live event. Log in to Launch to join.',
+      event_type: 'Quiz',
+      wing: 'talks',
+      location: 'Online',
+      starts_at: isoFrom(now - 25 * 60e3),
+      ends_at: isoFrom(now + 90 * 60e3),
+      stage: 'live',
+    }),
+    fromPublicRow({
+      id: 'demo-soon-fest',
+      name: 'House fest',
+      description: 'Demo upcoming event with a public sign-up form.',
+      event_type: 'Cultural',
+      wing: 'cultural',
+      location: 'Online',
+      registration_link: 'https://forms.gle/example',
+      starts_at: isoFrom(now + day),
+      ends_at: isoFrom(now + day + 2 * 3600e3),
+      stage: 'upcoming',
+    }),
+    fromPublicRow({
+      id: 'demo-soon-bgmi',
+      name: 'BGMI warmup',
+      description: 'Demo upcoming event. Join from Launch when it starts.',
+      event_type: 'E-Sports',
+      wing: 'games',
+      location: 'Online',
+      starts_at: isoFrom(now + 5 * day),
+      ends_at: isoFrom(now + 5 * day + 3 * 3600e3),
+      stage: 'upcoming',
+    }),
+  ];
+}
+
+function mergeLocalDemo() {
+  const extra = localDemoHappening();
+  if (!extra.length) return;
+  const onAir = [...live, ...extra.filter((e) => e.stage === 'live')];
+  const soon = [...upcoming, ...extra.filter((e) => e.stage !== 'live')];
+  soon.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
+  live.splice(0, live.length, ...onAir);
+  upcoming.splice(0, upcoming.length, ...soon);
+  for (const e of extra) byId[e.id] = e;
+}
+
 export async function loadPublicEvents() {
   publicCatalog.error = '';
   try {
@@ -207,6 +267,7 @@ export async function loadPublicEvents() {
   } catch (err) {
     publicCatalog.error = err?.message || 'The event archive did not load.';
   } finally {
+    mergeLocalDemo();
     publicCatalog.ready = true;
   }
 }
