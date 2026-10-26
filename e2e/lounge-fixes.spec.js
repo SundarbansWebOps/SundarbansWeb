@@ -158,6 +158,45 @@ test('month-only archive dates keep their year and source text without inventing
   await expect(page.locator('.evd-when')).toContainText('October 2024');
 });
 
+test('past events stay under their year when some rows have no timestamp', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-10T05:00:00Z') });
+  const dated = eventRow({
+    starts_at: '2026-02-15T14:30:00Z',
+    ends_at: '2026-02-15T16:00:00Z',
+    stage: 'past',
+    name: 'Winter meet',
+    registration: null,
+    attendance: null,
+  });
+  const monthOnly = eventRow({
+    id: '31a00000-0000-4000-8000-000000000011',
+    starts_at: null,
+    ends_at: null,
+    archive: true,
+    stage: 'past',
+    name: 'May meet',
+    display_date: 'May 2026',
+    registration: null,
+    attendance: null,
+  });
+  const older = eventRow({
+    id: '31a00000-0000-4000-8000-000000000012',
+    starts_at: '2025-11-20T14:30:00Z',
+    ends_at: '2025-11-20T16:00:00Z',
+    stage: 'past',
+    name: 'Older meet',
+    registration: null,
+    attendance: null,
+  });
+  await mockSupabase(page, {
+    data: { list_lounge_events: [monthOnly, older, dated] },
+  });
+  await page.goto('/#/lounge?view=events');
+  await page.getByRole('tab', { name: /Past/ }).click();
+  await expect(page.locator('.ev-group')).toHaveText(['2026', '2025']);
+  await expect(page.locator('.er-hit')).toHaveText(['May meet', 'Winter meet', 'Older meet']);
+});
+
 test('required multiselect blocks submission and identifies the field accessibly', async ({
   page,
 }) => {
