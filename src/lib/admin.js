@@ -733,6 +733,67 @@ export async function listForms() {
 
 export const saveForm = (form) => loungeSaveForm(form);
 
+export const boundFormForEvent = (forms, eventId) =>
+  eventId ? (forms.find((f) => f.event_id === eventId) ?? null) : null;
+
+export const formQuestionCount = (form) => (form?.fields || []).length;
+
+export function formNeedsPublishApproval(form, events = []) {
+  if (isSuperAdmin.value) return false;
+  if (form.community_id) return true;
+  if (!form.event_id) return false;
+  return events.find((event) => event.id === form.event_id)?.community_id != null;
+}
+
+export function loungeFormWritePayload(form, overrides = {}) {
+  return {
+    id: form.id,
+    title: form.title,
+    description: form.description || null,
+    fields: form.fields || [],
+    region_id: form.region_id ?? null,
+    community_id: form.community_id ?? null,
+    event_id: form.event_id ?? null,
+    joins_community: !!form.joins_community,
+    is_open: form.is_open !== false,
+    published_at: form.published_at || null,
+    opens_at: form.opens_at ?? null,
+    closes_at: form.closes_at ?? null,
+    audience_cohorts: form.audience_cohorts ?? [],
+    form_kind: form.form_kind || 'general',
+    group_label: form.group_label || null,
+    group_purpose: form.group_purpose || null,
+    archived_at: form.archived_at || null,
+    source_url: form.source_url || null,
+    ...overrides,
+  };
+}
+
+export async function syncBoundEventForm(event, { publish = false, unpublish = false } = {}) {
+  const bound = boundFormForEvent(await listForms(), event.id);
+  if (!bound) return null;
+  const published_at = publish
+    ? new Date().toISOString()
+    : unpublish
+      ? null
+      : bound.published_at || null;
+  const payload = loungeFormWritePayload(bound, {
+    title: event.name,
+    description: event.description || null,
+    event_id: event.id,
+    region_id: null,
+    community_id: null,
+    published_at,
+  });
+  if (publish && formNeedsPublishApproval(bound, [event]) && !bound.published_at) {
+    await saveForm({ ...payload, published_at: null });
+    await requestFormPublish(bound.id);
+    return bound;
+  }
+  await saveForm(payload);
+  return bound;
+}
+
 // Head/Co-Head forms go live only when a Super Admin approves this request.
 export const requestFormPublish = (formId, reason) =>
   supabase

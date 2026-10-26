@@ -46,6 +46,7 @@
             :initial-id="selectedId"
             @changed="refresh"
             @navigate="navigate"
+            @edit-form="openEventForm"
           />
           <p v-else-if="!loadError" class="adm-note" role="status">Loading admin data...</p>
         </main>
@@ -375,6 +376,11 @@ async function openStudent(id) {
 async function create(id) {
   await navigate(id);
   panel.value?.create?.();
+}
+async function openEventForm({ event, formId }) {
+  await navigate('forms');
+  await nextTick();
+  await panel.value?.openForEvent?.(event, formId);
 }
 async function refresh() {
   loadError.value = '';

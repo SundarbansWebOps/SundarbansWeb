@@ -177,12 +177,12 @@
           <small>Otherwise only its audience sees it in the Lounge until it ends.</small>
         </div>
         <label class="adm-field wide">
-          <span>How members attend</span>
+          <span>Registration</span>
           <AdminSelect v-model="form.entry_mode" :options="ENTRY_MODES" />
           <small v-if="form.entry_mode === 'open'">
-            Members join when it starts. No registration form. The Meet link stays in the Lounge.
+            Members see Open to all. No Register button. The Meet link stays in the Lounge.
           </small>
-          <small v-else>Link a form under Forms. Certificates need that registration.</small>
+          <small v-else>Members register on a form. Create or edit it below.</small>
         </label>
         <div class="adm-field wide">
           <span>Poster</span>
@@ -312,6 +312,25 @@
             Members see this in the Lounge when the session goes live. Public visitors do not.
           </small>
         </label>
+        <div v-if="form.entry_mode === 'register'" class="adm-field wide">
+          <span>Registration form</span>
+          <p v-if="boundForm" class="adm-note">
+            {{ boundForm.title }} · {{ boundForm.published_at ? 'published' : 'draft' }} ·
+            {{ formQuestionCount(boundForm) }} question{{
+              formQuestionCount(boundForm) === 1 ? '' : 's'
+            }}
+          </p>
+          <p v-else class="adm-note">No form yet.</p>
+          <button
+            type="button"
+            class="adm-btn ghost"
+            :disabled="busy || !form.name"
+            @click="openFormEditor"
+          >
+            {{ boundForm ? 'Edit form' : 'Create form' }}
+          </button>
+          <small v-if="!form.name">Name the event first.</small>
+        </div>
         <template v-if="isSuperAdmin && form.archive">
           <label class="adm-field">
             <span>Display date</span>
@@ -483,18 +502,21 @@ import {
   POSTER_TYPES,
   TEMPLATE_MAX_BYTES,
   TEMPLATE_TYPES,
+  boundFormForEvent,
   canManageEvent,
   cancelRequest,
   deleteEvent,
   downloadCsv,
   exportEventRecords,
   flattenExportRows,
+  formQuestionCount,
   getAvailableCohorts,
   importAttendance,
   isMaskedEmail,
   listEventRegistrations,
   listAttendance,
   listEvents,
+  listForms,
   membersOnlyAudience,
   normalizeEmail,
   parseCsv,
@@ -504,6 +526,7 @@ import {
   requestEventPublish,
   setEventCancelled,
   suggestMeetMapping,
+  syncBoundEventForm,
   uploadCertificateTemplate,
   uploadEventPoster,
 } from '../../lib/admin.js';
@@ -513,7 +536,7 @@ const props = defineProps({
   lookups: { type: Object, required: true },
   initialId: { type: String, default: null },
 });
-const emit = defineEmits(['changed']);
+const emit = defineEmits(['changed', 'edit-form']);
 
 const view = ref('upcoming');
 const events = ref([]);
@@ -522,6 +545,7 @@ const busy = ref(false);
 const error = ref('');
 const notice = ref('');
 const form = ref(null);
+const boundForm = ref(null);
 const formError = ref('');
 const dlg = ref(null);
 const opsDlg = ref(null);
@@ -582,8 +606,8 @@ const ATTENDANCE_MODES = [
   { value: 'reviewed', label: 'Reviewed list' },
 ];
 const ENTRY_MODES = [
-  { value: 'register', label: 'Register on a form' },
-  { value: 'open', label: 'Open to all — no form' },
+  { value: 'register', label: 'Form' },
+  { value: 'open', label: 'No form' },
 ];
 const IMPORT_MODES = [
   { value: 'merge', label: 'Merge; keep omitted rows' },
@@ -659,7 +683,7 @@ onMounted(async () => {
   }
   await load();
   const row = events.value.find((r) => r.id === props.initialId);
-  if (row) edit(row);
+  if (row) await edit(row);
 });
 
 function show(v) {
@@ -679,12 +703,13 @@ defineExpose({
   openRecord: async (id) => {
     await load();
     const row = events.value.find((r) => r.id === id);
-    if (row) edit(row);
+    if (row) await edit(row);
   },
 });
 
-function edit(e) {
+async function edit(e) {
   formError.value = '';
+  boundForm.value = null;
   const start = new Date(Date.now() + 864e5);
   start.setMinutes(0, 0, 0);
   if (e) {
@@ -701,6 +726,7 @@ function edit(e) {
       is_public: !!e.is_public,
       entry_mode: e.entry_mode === 'open' ? 'open' : 'register',
     };
+    boundForm.value = boundFormForEvent(await listForms().catch(() => []), e.id);
   } else {
     form.value = {
       name: '',
@@ -780,11 +806,21 @@ async function save(mode) {
     formError.value = 'Open sessions need a meeting link that starts with https://';
     return;
   }
+  if (form.value.entry_mode === 'register' && mode === 'publish') {
+    const bound =
+      boundForm.value || boundFormForEvent(await listForms().catch(() => []), form.value.id);
+    if (!bound || formQuestionCount(bound) < 1) {
+      formError.value = 'Add at least one question to the form before publishing.';
+      return;
+    }
+  }
   if (
     mode === 'unpublish' &&
     !(await askConfirm({
       title: 'Unpublish this event?',
-      message: 'It goes back to a draft and disappears for members until you publish it again.',
+      message: boundForm.value
+        ? 'It goes back to a draft and disappears for members until you publish it again. Its registration form is unpublished too.'
+        : 'It goes back to a draft and disappears for members until you publish it again.',
       confirmLabel: 'Unpublish',
       danger: true,
     }))
@@ -793,19 +829,50 @@ async function save(mode) {
   busy.value = true;
   formError.value = '';
   try {
+    let id = form.value.id;
     if (mode === 'publish' && needsApproval.value) {
-      const id = await saveEvent(payload());
+      id = await saveEvent(payload());
       await requestEventPublish(id);
       notice.value = 'Sent to a Super Admin. The event goes live once they approve it.';
     } else {
-      await saveEvent(payload(), {
+      id = await saveEvent(payload(), {
         publish: mode === 'publish',
         unpublish: mode === 'unpublish',
       });
     }
+    form.value.id = id;
+    if (form.value.entry_mode === 'register') {
+      await syncBoundEventForm(
+        { ...payload(), id, name: form.value.name, description: form.value.description },
+        { publish: mode === 'publish' && !needsApproval.value, unpublish: mode === 'unpublish' }
+      );
+    }
     dlg.value?.close();
     await load();
     emit('changed');
+  } catch (e) {
+    formError.value = friendly(e);
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function openFormEditor() {
+  if (!form.value?.name) {
+    formError.value = 'Name the event first.';
+    nameInput.value?.focus();
+    return;
+  }
+  busy.value = true;
+  formError.value = '';
+  try {
+    const id = await saveEvent(payload());
+    form.value.id = id;
+    emit('changed');
+    emit('edit-form', {
+      event: { ...payload(), id, name: form.value.name, description: form.value.description },
+      formId: boundForm.value?.id ?? null,
+    });
   } catch (e) {
     formError.value = friendly(e);
   } finally {

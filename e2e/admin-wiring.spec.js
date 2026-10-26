@@ -141,10 +141,10 @@ test('event editor saves an open session with no registration form', async ({ pa
   await page.getByRole('button', { name: 'New event' }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Name').fill('House hour');
-  await pick(dialog, 'How members attend', 'Open to all — no form');
+  await pick(dialog, 'Registration', 'No form');
   await expect(
     dialog.getByText(
-      'Members join when it starts. No registration form. The Meet link stays in the Lounge.'
+      'Members see Open to all. No Register button. The Meet link stays in the Lounge.'
     )
   ).toBeVisible();
   await dialog.getByRole('button', { name: 'Save draft' }).click();
@@ -153,6 +153,68 @@ test('event editor saves an open session with no registration form', async ({ pa
     name: 'House hour',
     entry_mode: 'open',
     certificate_template_url: null,
+  });
+});
+
+test('publishing a form event without questions is refused', async ({ page }) => {
+  await mockSupabase(page, {
+    as: 'sa',
+    data: { events: [{ id: 'e0000000-0000-4000-8000-000000000025' }], list_lounge_forms: [] },
+  });
+  await page.goto('/#/admin?tab=events');
+  await page.getByRole('button', { name: 'New event' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Name').fill('House meetup');
+  await dialog.getByRole('button', { name: 'Publish' }).click();
+  await expect(
+    dialog.getByText('Add at least one question to the form before publishing.')
+  ).toBeVisible();
+});
+
+test('create form from an event opens the form editor with the event name', async ({ page }) => {
+  const eventId = 'e0000000-0000-4000-8000-000000000026';
+  const formId = 'f0000000-0000-4000-8000-000000000026';
+  const event = {
+    id: eventId,
+    name: 'House meetup',
+    description: 'Tuesday gathering',
+    starts_at: '2026-12-01T10:00:00Z',
+    ends_at: '2026-12-01T12:00:00Z',
+    entry_mode: 'register',
+    archive: false,
+    cancelled_at: null,
+    community_id: null,
+    region_id: null,
+  };
+  const calls = await mockSupabase(page, {
+    as: 'sa',
+    data: {
+      events: [event],
+      list_lounge_forms: [],
+      save_lounge_form: formId,
+    },
+  });
+  await page.goto('/#/admin?tab=events');
+  await page.getByRole('button', { name: 'New event' }).click();
+  const eventDialog = page.getByRole('dialog');
+  await eventDialog.getByLabel('Name').fill('House meetup');
+  await eventDialog.getByLabel('Description').fill('Tuesday gathering');
+  await eventDialog.getByRole('button', { name: 'Create form' }).click();
+  await callTo(calls, '/rest/v1/events', 'POST');
+  const formDialog = page.getByRole('dialog');
+  await expect(formDialog.getByRole('heading', { name: 'New form' })).toBeVisible();
+  await expect(formDialog.getByLabel('Title')).toHaveValue('House meetup');
+  await expect(formDialog.getByLabel('Title')).toBeDisabled();
+  await expect(formDialog.getByLabel('Description')).toHaveValue('Tuesday gathering');
+  await formDialog.getByRole('button', { name: 'Add question' }).click();
+  await formDialog.getByLabel('Question', { exact: true }).fill('Which games');
+  await formDialog.getByRole('button', { name: 'Save draft' }).click();
+  const saved = await callTo(calls, '/rest/v1/rpc/save_lounge_form');
+  expect(JSON.parse(saved.body).p_form).toMatchObject({
+    title: 'House meetup',
+    description: 'Tuesday gathering',
+    event_id: eventId,
+    fields: [{ label: 'Which games' }],
   });
 });
 
@@ -166,7 +228,7 @@ test('publishing an open session without a Meet link is refused', async ({ page 
   await page.getByRole('button', { name: 'New event' }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Name').fill('House hour');
-  await pick(dialog, 'How members attend', 'Open to all — no form');
+  await pick(dialog, 'Registration', 'No form');
   await dialog.getByRole('button', { name: 'Publish' }).click();
   await expect(
     dialog.getByText('Open sessions need a meeting link that starts with https://')
@@ -198,7 +260,7 @@ test('switching an event to open clears the certificate template', async ({ page
   await page.goto('/#/admin?tab=events');
   await page.getByRole('button', { name: 'Edit' }).click();
   const dialog = page.getByRole('dialog');
-  await pick(dialog, 'How members attend', 'Open to all — no form');
+  await pick(dialog, 'Registration', 'No form');
   await dialog.getByRole('button', { name: 'Save changes' }).click();
   const saved = await callTo(calls, '/rest/v1/events', 'PATCH');
   expect(JSON.parse(saved.body)).toMatchObject({
