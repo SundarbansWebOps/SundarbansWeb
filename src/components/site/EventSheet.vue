@@ -103,27 +103,39 @@
 
                 <p v-if="e.desc" class="desc">{{ e.desc }}</p>
 
-                <a
-                  v-if="e.stage && e.stage !== 'past' && e.link"
-                  class="verify"
-                  :href="e.link"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <span>
-                    <strong>{{ e.stage === 'live' ? 'Happening now' : 'Coming up' }}</strong>
-                    Register for this event
-                  </span>
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M5 12h14M13 6l6 6-6 6" />
-                  </svg>
-                </a>
-                <button
-                  v-else-if="!e.stage || e.stage === 'past'"
-                  type="button"
-                  class="verify"
-                  @click="toLounge"
-                >
+                <template v-if="e.stage && e.stage !== 'past'">
+                  <button
+                    type="button"
+                    class="verify"
+                    :class="{ live: e.stage === 'live' }"
+                    :disabled="busy"
+                    @click="toLaunch"
+                  >
+                    <span>
+                      <strong>{{ e.stage === 'live' ? 'Happening now' : 'Coming up' }}</strong>
+                      {{ signedIn ? 'Open in Launch to join' : 'Log in to Launch to join' }}
+                    </span>
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M5 12h14M13 6l6 6-6 6" />
+                    </svg>
+                  </button>
+                  <a
+                    v-if="e.link"
+                    class="verify"
+                    :href="e.link"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <span>
+                      <strong>Register</strong>
+                      Open the sign-up form
+                    </span>
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M5 12h14M13 6l6 6-6 6" />
+                    </svg>
+                  </a>
+                </template>
+                <button v-else type="button" class="verify" @click="toLounge">
                   <span>
                     <strong>Took part?</strong>
                     Get your participation certificate in the members’ lounge
@@ -143,11 +155,37 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import TypePoster from './TypePoster.vue';
 import { WINGS, byId, closeEvent, ev, fullDate, img, openEvent } from '../../lib/events.js';
+import { signedIn, signInWithGoogle } from '../../lib/auth.js';
 import { nav } from '../../lib/store.js';
 
 const props = defineProps({ list: { type: Array, required: true } });
+const router = useRouter();
+const busy = ref(false);
+
+function launchPath(stage) {
+  return stage === 'live' ? '/lounge?room=live' : '/lounge?view=events';
+}
+
+// Live and upcoming join from Launch. Meet links stay off this public sheet.
+function toLaunch() {
+  const next = launchPath(e.value?.stage);
+  closeEvent(async () => {
+    if (signedIn.value) {
+      await router.push(next);
+      return;
+    }
+    busy.value = true;
+    try {
+      await signInWithGoogle(next);
+    } catch {
+      busy.value = false;
+      await router.push({ path: '/login', query: { next } });
+    }
+  });
+}
 
 // Certificates live in the members’ lounge; land on its certificate demo.
 function toLounge() {
@@ -455,6 +493,13 @@ a.verify {
 }
 .verify:hover svg {
   transform: translateX(4px);
+}
+.verify.live {
+  border-style: solid;
+  border-color: var(--verm);
+}
+.verify.live strong {
+  color: var(--verm);
 }
 
 .next-enter-active,

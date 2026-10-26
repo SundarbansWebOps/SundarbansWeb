@@ -1,5 +1,6 @@
 // Past events, adapted from the data already on the live site.
-// Public Events is an archive only: live events belong to the members-only House lounge.
+// Public Events lists Public upcoming/live events at the top, then the archive.
+// Joining happens in Launch (the Lounge); this page never shows a Meet link.
 import { reactive, watch } from 'vue';
 import { router } from '../router/index.js';
 import { EVENTS } from '../data/events.data.js';
@@ -163,7 +164,8 @@ const snapshot = EVENTS.filter(notMeetup).map(fromPublicRow);
 snapshot.sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
 
 export const events = reactive([]);
-// Upcoming / live events marked Public by their organisers (soonest first).
+// Public live and upcoming rows (soonest first). Members-only events stay in Launch.
+export const live = reactive([]);
 export const upcoming = reactive([]);
 export const byId = reactive({});
 export const publicCatalog = reactive({
@@ -172,11 +174,14 @@ export const publicCatalog = reactive({
   regions: [],
 });
 
-function replaceEvents(list, next = []) {
+function replaceEvents(list, happening = []) {
+  const onAir = happening.filter((e) => e.stage === 'live');
+  const soon = happening.filter((e) => e.stage !== 'live');
   events.splice(0, events.length, ...list);
-  upcoming.splice(0, upcoming.length, ...next);
+  live.splice(0, live.length, ...onAir);
+  upcoming.splice(0, upcoming.length, ...soon);
   for (const key of Object.keys(byId)) delete byId[key];
-  for (const e of [...list, ...next]) byId[e.id] = e;
+  for (const e of [...list, ...onAir, ...soon]) byId[e.id] = e;
 }
 
 replaceEvents(snapshot);
@@ -305,7 +310,7 @@ function runAfterClose() {
 // The URL is the source of truth: Back drops ?event= and the sheet closes; a shared
 // ?event= link (or Forward) opens it.
 watch(
-  () => [router.currentRoute.value.query.event, events.length],
+  () => [router.currentRoute.value.query.event, events.length, live.length, upcoming.length],
   ([id]) => {
     if (id && byId[id]) {
       if (ev.open !== id) {
