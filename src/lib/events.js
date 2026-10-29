@@ -10,6 +10,7 @@ export const WINGS = {
   games: { label: 'Games & Sports' },
   tech: { label: 'Tech' },
   talks: { label: 'Talks' },
+  girls: { label: 'Girls' },
 };
 
 const MON = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
@@ -67,6 +68,23 @@ export const slug = (s) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
 
+const WING_BY_COMMUNITY_ID = {
+  1: 'games',
+  2: 'tech',
+  3: 'cultural',
+  7: 'girls',
+};
+const WING_BY_SLUG = {
+  esports: 'games',
+  games: 'games',
+  technical: 'tech',
+  tech: 'tech',
+  cultural: 'cultural',
+  talks: 'talks',
+  house: 'talks',
+  girls: 'girls',
+};
+
 const WING_OF_TYPE = {
   'Guest Talk': 'talks',
   Empowerment: 'talks',
@@ -76,14 +94,27 @@ const WING_OF_TYPE = {
   Hackathon: 'tech',
   Workshop: 'tech',
   Cultural: 'cultural',
+  Girls: 'girls',
 };
 export const wingOf = (e) => {
-  const raw = e.wing || e.event_type || e.type;
-  if (raw === 'esports' || raw === 'games') return 'games';
-  if (raw === 'technical' || raw === 'tech') return 'tech';
-  if (raw === 'cultural') return 'cultural';
-  if (raw === 'talks') return 'talks';
-  return WING_OF_TYPE[e.event_type || e.type] ?? (WINGS[e.wing] ? e.wing : 'cultural');
+  if (e?.community_id != null && WING_BY_COMMUNITY_ID[e.community_id]) {
+    return WING_BY_COMMUNITY_ID[e.community_id];
+  }
+  const slug = (e?.community || e?.wing)?.toString().trim().toLowerCase();
+  if (slug && WING_BY_SLUG[slug]) return WING_BY_SLUG[slug];
+
+  const typeMatch = WING_OF_TYPE[e?.event_type || e?.type];
+  if (typeMatch) return typeMatch;
+
+  const rawType = (e?.event_type || e?.type)?.toString().trim().toLowerCase();
+  if (rawType && WING_BY_SLUG[rawType]) return WING_BY_SLUG[rawType];
+
+  // House-wide events from the database explicitly have community_id: null
+  if (e?.community_id === null && !e?.wing) {
+    return 'talks';
+  }
+
+  return 'cultural';
 };
 
 // Cloudinary: swap the stored delivery transform for one sized to where it is shown.
