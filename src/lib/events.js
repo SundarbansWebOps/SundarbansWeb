@@ -67,6 +67,21 @@ export const slug = (s) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
 
+const WING_BY_COMMUNITY_ID = {
+  1: 'games',
+  2: 'tech',
+  3: 'cultural',
+};
+const WING_BY_COMMUNITY = {
+  esports: 'games',
+  games: 'games',
+  technical: 'tech',
+  tech: 'tech',
+  cultural: 'cultural',
+  talks: 'talks',
+  house: 'talks',
+};
+
 const WING_OF_TYPE = {
   'Guest Talk': 'talks',
   Empowerment: 'talks',
@@ -78,12 +93,21 @@ const WING_OF_TYPE = {
   Cultural: 'cultural',
 };
 export const wingOf = (e) => {
-  const raw = e.wing || e.event_type || e.type;
+  if (e?.community_id && WING_BY_COMMUNITY_ID[e.community_id]) {
+    return WING_BY_COMMUNITY_ID[e.community_id];
+  }
+  if (e?.community && WING_BY_COMMUNITY[e.community]) {
+    return WING_BY_COMMUNITY[e.community];
+  }
+  const raw = e?.wing || e?.event_type || e?.type;
   if (raw === 'esports' || raw === 'games') return 'games';
   if (raw === 'technical' || raw === 'tech') return 'tech';
   if (raw === 'cultural') return 'cultural';
   if (raw === 'talks') return 'talks';
-  return WING_OF_TYPE[e.event_type || e.type] ?? (WINGS[e.wing] ? e.wing : 'cultural');
+  return (
+    WING_OF_TYPE[e?.event_type || e?.type] ??
+    (WINGS[e?.wing] ? e.wing : e?.community_id == null && !e?.wing ? 'talks' : 'cultural')
+  );
 };
 
 // Cloudinary: swap the stored delivery transform for one sized to where it is shown.
