@@ -18,6 +18,7 @@ const COMM_INK = {
   cultural: '#9a5200',
   technical: '#2f4f9e',
   esports: '#b8341b',
+  girls: '#a3245c',
   house: '#7e3474',
 };
 

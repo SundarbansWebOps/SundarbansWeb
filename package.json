@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "node scripts/check-format.mjs",
+    "test:unit": "node --test src/lib/wing.test.js",
     "test:smoke": "playwright test",
     "check:study": "node scripts/check-study-data.mjs",
     "check:design": "node scripts/check-design.mjs",

@@ -4,14 +4,9 @@
 import { reactive, watch } from 'vue';
 import { router } from '../router/index.js';
 import { EVENTS } from '../data/events.data.js';
+import { wingOf } from './wing.js';
 
-export const WINGS = {
-  cultural: { label: 'Cultural' },
-  games: { label: 'Games & Sports' },
-  tech: { label: 'Tech' },
-  talks: { label: 'Talks' },
-  girls: { label: 'Girls' },
-};
+export { WINGS, wingOf } from './wing.js';
 
 const MON = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 export const MONTH = [
@@ -67,55 +62,6 @@ export const slug = (s) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
-
-const WING_BY_COMMUNITY_ID = {
-  1: 'games',
-  2: 'tech',
-  3: 'cultural',
-  7: 'girls',
-};
-const WING_BY_SLUG = {
-  esports: 'games',
-  games: 'games',
-  technical: 'tech',
-  tech: 'tech',
-  cultural: 'cultural',
-  talks: 'talks',
-  house: 'talks',
-  girls: 'girls',
-};
-
-const WING_OF_TYPE = {
-  'Guest Talk': 'talks',
-  Empowerment: 'talks',
-  Sports: 'games',
-  'E-Sports': 'games',
-  Technical: 'tech',
-  Hackathon: 'tech',
-  Workshop: 'tech',
-  Cultural: 'cultural',
-  Girls: 'girls',
-};
-export const wingOf = (e) => {
-  if (e?.community_id != null && WING_BY_COMMUNITY_ID[e.community_id]) {
-    return WING_BY_COMMUNITY_ID[e.community_id];
-  }
-  const slug = (e?.community || e?.wing)?.toString().trim().toLowerCase();
-  if (slug && WING_BY_SLUG[slug]) return WING_BY_SLUG[slug];
-
-  const typeMatch = WING_OF_TYPE[e?.event_type || e?.type];
-  if (typeMatch) return typeMatch;
-
-  const rawType = (e?.event_type || e?.type)?.toString().trim().toLowerCase();
-  if (rawType && WING_BY_SLUG[rawType]) return WING_BY_SLUG[rawType];
-
-  // House-wide events from the database explicitly have community_id: null
-  if (e?.community_id === null && !e?.wing) {
-    return 'talks';
-  }
-
-  return 'cultural';
-};
 
 // Cloudinary: swap the stored delivery transform for one sized to where it is shown.
 const CLD = 'f_auto,q_auto:good,w_1000,c_limit';
