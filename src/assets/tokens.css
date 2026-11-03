@@ -34,6 +34,7 @@
   --w-tech: #2f4f9e;
   --w-talks: #7e3474;
   --w-meetups: #6b4a2b;
+  --w-girls: #a3245c;
   /* Contributors chart series: top six people, then Others (neutral). */
   --s1: #d98500;
   --s2: #3b5bdb;
@@ -69,6 +70,7 @@
   --w-tech: #93a9ff;
   --w-talks: #e394d4;
   --w-meetups: #d4ab80;
+  --w-girls: #ff9cc6;
   --s1: #c98500;
   --s2: #5a74f0;
   --s3: #e0502e;
@@ -104,6 +106,17 @@
   --w-tech: #93a9ff;
   --w-talks: #e394d4;
   --w-meetups: #d4ab80;
+  --w-girls: #ff9cc6;
+}
+
+/* Poster inks: posters print on light paper in both themes, so these never switch. */
+:root {
+  --poster-cultural: #9a5200;
+  --poster-games: #b8341b;
+  --poster-tech: #2f4f9e;
+  --poster-talks: #7e3474;
+  --poster-girls: #a3245c;
+  --poster-meetups: #6b4a2b;
 }
 
 :root {
@@ -227,6 +240,9 @@ button {
 }
 .w-meetups {
   --w: var(--w-meetups);
+}
+.w-girls {
+  --w: var(--w-girls);
 }
 
 /* Entrance: content rises in a quick stagger — no loader, no blocking. */

@@ -4,13 +4,9 @@
 import { reactive, watch } from 'vue';
 import { router } from '../router/index.js';
 import { EVENTS } from '../data/events.data.js';
+import { wingOf } from './wing.js';
 
-export const WINGS = {
-  cultural: { label: 'Cultural' },
-  games: { label: 'Games & Sports' },
-  tech: { label: 'Tech' },
-  talks: { label: 'Talks' },
-};
+export { WINGS, wingOf } from './wing.js';
 
 const MON = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 export const MONTH = [
@@ -66,25 +62,6 @@ export const slug = (s) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
-
-const WING_OF_TYPE = {
-  'Guest Talk': 'talks',
-  Empowerment: 'talks',
-  Sports: 'games',
-  'E-Sports': 'games',
-  Technical: 'tech',
-  Hackathon: 'tech',
-  Workshop: 'tech',
-  Cultural: 'cultural',
-};
-export const wingOf = (e) => {
-  const raw = e.wing || e.event_type || e.type;
-  if (raw === 'esports' || raw === 'games') return 'games';
-  if (raw === 'technical' || raw === 'tech') return 'tech';
-  if (raw === 'cultural') return 'cultural';
-  if (raw === 'talks') return 'talks';
-  return WING_OF_TYPE[e.event_type || e.type] ?? (WINGS[e.wing] ? e.wing : 'cultural');
-};
 
 // Cloudinary: swap the stored delivery transform for one sized to where it is shown.
 const CLD = 'f_auto,q_auto:good,w_1000,c_limit';

@@ -32,13 +32,14 @@ const size = computed(() => {
   const base = n < 14 ? 26 : n < 26 ? 21 : n < 40 ? 18 : 15;
   return `${props.big ? base * 1.5 : base}px`;
 });
-// The light theme's wing inks: the poster paper is light in both themes.
+// Wing inks for the poster's light paper, in both themes (tokens in src/assets/tokens.css).
 const INK = {
-  cultural: '#9a5200',
-  games: '#b8341b',
-  tech: '#2f4f9e',
-  talks: '#7e3474',
-  meetups: '#6b4a2b',
+  cultural: 'var(--poster-cultural)',
+  games: 'var(--poster-games)',
+  tech: 'var(--poster-tech)',
+  talks: 'var(--poster-talks)',
+  girls: 'var(--poster-girls)',
+  meetups: 'var(--poster-meetups)',
 };
 </script>
 

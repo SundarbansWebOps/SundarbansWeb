@@ -48,17 +48,17 @@ export const COMMUNITIES = {
     cls: 'w-games',
     art: new URL('./art/r3/fig-esports.webp', import.meta.url).href,
   },
+  girls: { label: 'Girls', cls: 'w-girls', art: CREST },
   house: { label: 'House-wide', cls: 'w-talks', art: CREST },
 };
-const COMM_BY_ID = { 1: 'esports', 2: 'technical', 3: 'cultural' };
+// A community's key is its database code (communities.code, sent as community_code). Wing names
+// are the fallback for rows without one; a house-wide event has neither.
+const WING_KEY = { games: 'esports', tech: 'technical' };
 export const commKey = (e) => {
   if (e?.community && COMMUNITIES[e.community]) return e.community;
-  if (e?.community_id && COMM_BY_ID[e.community_id]) return COMM_BY_ID[e.community_id];
-  const w = e?.wing;
-  if (w === 'cultural') return 'cultural';
-  if (w === 'esports' || w === 'games') return 'esports';
-  if (w === 'tech' || w === 'technical') return 'technical';
-  return 'house';
+  if (e?.community_code && COMMUNITIES[e.community_code]) return e.community_code;
+  const key = WING_KEY[e?.wing] ?? e?.wing;
+  return COMMUNITIES[key] ? key : 'house';
 };
 export const commOf = (e) => COMMUNITIES[commKey(e)] ?? COMMUNITIES.house;
 
