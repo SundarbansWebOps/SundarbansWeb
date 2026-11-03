@@ -38,6 +38,8 @@
         <div class="h-fade"></div>
       </div>
 
+      <DiwaliLayer v-if="DiwaliLayer" :phone="phone" :delay="festiveDelay" :visible="heroOn" />
+
       <h1 class="visually-hidden">{{ name ? `Lounge of ${name}` : 'Your Lounge' }}</h1>
 
       <div class="h-mine">
@@ -65,7 +67,15 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from 'vue';
 import CREST from '../../assets/crest.webp';
 import HomeWorld from './home/HomeWorld.vue';
 import LiveTicket from './home/LiveTicket.vue';
@@ -74,6 +84,7 @@ import MooredBoats from './home/MooredBoats.vue';
 import NameBeacon from './home/NameBeacon.vue';
 import RiverBoat from './home/RiverBoat.vue';
 import { PLATE } from './home/art.js';
+import { diwaliOn } from './home/festival.js';
 import { animate, motionHeld, motionTimeout, onScreen, reduced, vLoop } from './home/motion.js';
 import { groupsSection } from './session.js';
 import { nameFlight, openNameCard, shownName } from './state.js';
@@ -91,6 +102,11 @@ const ripHost = ref(null);
 const beacon = ref(null);
 
 const name = computed(() => shownName.value);
+
+/* Diwali: fetched only inside the festival window, so the rest of the year costs nothing. */
+const DiwaliLayer = diwaliOn()
+  ? defineAsyncComponent(() => import('./home/DiwaliLayer.vue'))
+  : null;
 const heroOn = () => onScreen(heroEl.value);
 
 /* ---------- Geometry: the plate box, horizon and sun/moon, as px CSS variables ---------- */
@@ -147,6 +163,9 @@ const lit = ref(reduced() || !firstArrival);
 const lampDelay = computed(() =>
   phase.value === 'intro' ? 2600 : phase.value === 'arrive' ? 900 : 0
 );
+/* The fireworks wait for Home's own arrival to settle: the load build, or the name's flight
+   from the tour. */
+const festiveDelay = firstArrival ? 3600 : phase.value === 'intro' ? 3000 : 500;
 let timers = [];
 const later = (fn, ms) => timers.push(motionTimeout(fn, ms));
 let dead = false;
