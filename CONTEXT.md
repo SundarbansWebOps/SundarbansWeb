@@ -27,7 +27,7 @@ A regional operator who manages meetups and region-specific updates for an assig
 The regional allocation group for members listed as International Region. It has no Regional Coordinator.
 
 **Community Head / Co-Head**:
-An assigned community operator who can create, edit and directly publish that community's events. Both roles have the same event controls; super admins retain oversight across communities.
+An assigned community operator who can create, edit and directly publish that community's events. Both roles have the same event controls; super admins retain oversight across communities. A community has one Head and at most two Co-Heads.
 
 **Group application**:
 A student's submitted house-themed form requesting access to a community or group. Submission reveals the WhatsApp invite, but does not establish verified group membership.
