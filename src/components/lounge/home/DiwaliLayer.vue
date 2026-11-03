@@ -59,8 +59,8 @@
         >!
       </h2>
       <p class="gp-body dw-body">
-        From all of us at Sundarbans House: may your home be bright, your sweets plenty and your
-        deadlines kind.
+        Wishing you and your family a very happy Diwali from everyone at Sundarbans House. Enjoy the
+        sweets, and stay safe around the crackers.
       </p>
       <button v-if="motion" type="button" class="gp-btn is-ghost dw-fire" @click="light">
         Light a firework
