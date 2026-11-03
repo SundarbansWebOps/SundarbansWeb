@@ -1,4 +1,4 @@
-<!-- Positions (Super Admin): 0–2 RCs per region, a Head and Co-Head per community. International
+<!-- Positions (Super Admin): 0–2 RCs per region, a Head and up to two Co-Heads per community. International
      has no RC. Revoking or giving a position is a request another Super Admin approves; give one
      from the Students tab. Super Admin accounts are fixed — there is no add/remove here. -->
 <template>
@@ -63,7 +63,7 @@
       <header class="group-head">
         <div>
           <p id="community-leads-title" class="adm-kicker">Community leads</p>
-          <p class="adm-note">Head and Co-Head assignments for each community.</p>
+          <p class="adm-note">One Head and up to two Co-Heads for each community.</p>
         </div>
         <span class="adm-badge mari">{{ communityCount }} assigned</span>
       </header>
@@ -74,49 +74,43 @@
               <b>{{ c.name }}</b>
               <span class="adm-badge">{{ POSITION_LABEL[p] }}</span>
             </div>
-            <div v-if="leadOf(c.id, p)" class="position-holder">
-              <span class="person-avatar" aria-hidden="true">{{
-                initials(leadOf(c.id, p).member)
-              }}</span>
-              <div class="person-info">
-                <b>{{ fullName(leadOf(c.id, p).member) }}</b>
-                <span class="person-detail">
-                  <template v-if="leadOf(c.id, p).member?.member_code">
-                    {{ leadOf(c.id, p).member.member_code }}
-                  </template>
-                  <template
-                    v-if="leadOf(c.id, p).member?.member_code && leadOf(c.id, p).member?.email"
-                  >
-                    ·
-                  </template>
-                  <template v-if="leadOf(c.id, p).member?.email">
-                    {{ leadOf(c.id, p).member.email }}
-                  </template>
-                  <template
-                    v-if="!leadOf(c.id, p).member?.member_code && !leadOf(c.id, p).member?.email"
-                  >
-                    {{
-                      leadOf(c.id, p).member
-                        ? `Member ${leadOf(c.id, p).member.id.slice(-8)}`
-                        : `Profile unavailable · ${leadOf(c.id, p).member_id.slice(-8)}`
-                    }}
-                  </template>
-                </span>
-                <span class="assignment-date">Assigned {{ day(leadOf(c.id, p).started_at) }}</span>
+            <div v-if="holdersOf(c.id, p).length" class="holder-list">
+              <div v-for="h in holdersOf(c.id, p)" :key="h.id" class="position-holder">
+                <span class="person-avatar" aria-hidden="true">{{ initials(h.member) }}</span>
+                <div class="person-info">
+                  <b>{{ fullName(h.member) }}</b>
+                  <span class="person-detail">
+                    <template v-if="h.member?.member_code">{{ h.member.member_code }}</template>
+                    <template v-if="h.member?.member_code && h.member?.email"> · </template>
+                    <template v-if="h.member?.email">{{ h.member.email }}</template>
+                    <template v-if="!h.member?.member_code && !h.member?.email">
+                      {{
+                        h.member
+                          ? `Member ${h.member.id.slice(-8)}`
+                          : `Profile unavailable · ${h.member_id.slice(-8)}`
+                      }}
+                    </template>
+                  </span>
+                  <span class="assignment-date">Assigned {{ day(h.started_at) }}</span>
+                </div>
+                <button
+                  v-if="h.member?.id"
+                  type="button"
+                  class="adm-btn danger small"
+                  :aria-label="`Revoke ${fullName(h.member)} as ${POSITION_LABEL[p]} for ${c.name}`"
+                  @click="ask(h)"
+                >
+                  Revoke
+                </button>
               </div>
-              <button
-                v-if="leadOf(c.id, p).member?.id"
-                type="button"
-                class="adm-btn danger small"
-                :aria-label="`Revoke ${fullName(leadOf(c.id, p).member)} as ${POSITION_LABEL[p]} for ${c.name}`"
-                @click="ask(leadOf(c.id, p))"
-              >
-                Revoke
-              </button>
             </div>
-            <div v-else class="vacant-slot">
+            <div
+              v-for="seat in SEATS[p] - holdersOf(c.id, p).length"
+              :key="seat"
+              class="vacant-slot"
+            >
               <span class="vacant-dot" aria-hidden="true"></span>
-              Position vacant
+              {{ p === 'head' ? 'Position vacant' : 'Co-Head seat vacant' }}
             </div>
           </li>
         </template>
@@ -177,8 +171,10 @@ const communityCount = computed(
 );
 const rcsOf = (regionId) =>
   positions.value.filter((p) => p.position === 'rc' && p.region_id === regionId);
-const leadOf = (communityId, position) =>
-  positions.value.find((p) => p.position === position && p.community_id === communityId);
+// Seats per community: one Head, up to two Co-Heads (enforced by the DB trigger).
+const SEATS = { head: 1, co_head: 2 };
+const holdersOf = (communityId, position) =>
+  positions.value.filter((p) => p.position === position && p.community_id === communityId);
 const fullName = (member) =>
   member?.full_name?.trim() || member?.preferred_name?.trim() || 'Name not set';
 const initials = (member) => {
