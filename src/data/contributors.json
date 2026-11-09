@@ -1,7 +1,7 @@
 {
   "repo": "SundarbansWebOps/SundarbansWeb",
   "since": "2026-07-01",
-  "generatedAt": "2026-10-26T14:07:35.796Z",
+  "generatedAt": "2026-11-09T10:01:47.589Z",
   "weekStarts": [
     "2026-07-01",
     "2026-07-08",
@@ -19,15 +19,17 @@
     "2026-09-30",
     "2026-10-07",
     "2026-10-14",
-    "2026-10-21"
+    "2026-10-21",
+    "2026-10-28",
+    "2026-11-04"
   ],
   "contributors": [
     {
       "login": "Anuraj-dev",
-      "commits": 246,
-      "mergedPRs": 85,
-      "additions": 146691,
-      "deletions": 62799,
+      "commits": 253,
+      "mergedPRs": 90,
+      "additions": 149020,
+      "deletions": 63026,
       "weeks": [
         {
           "c": 5,
@@ -110,13 +112,23 @@
           "d": 8681
         },
         {
-          "c": 31,
-          "a": 12567,
-          "d": 2327
+          "c": 34,
+          "a": 13686,
+          "d": 2431
+        },
+        {
+          "c": 4,
+          "a": 1210,
+          "d": 123
+        },
+        {
+          "c": 0,
+          "a": 0,
+          "d": 0
         }
       ],
       "first": "2026-07-03",
-      "last": "2026-10-26",
+      "last": "2026-11-03",
       "name": "Anuraj Jit Saikia",
       "avatar": "https://avatars.githubusercontent.com/u/190996683?s=160",
       "profile": "https://github.com/Anuraj-dev"
@@ -212,6 +224,16 @@
           "c": 0,
           "a": 0,
           "d": 0
+        },
+        {
+          "c": 0,
+          "a": 0,
+          "d": 0
+        },
+        {
+          "c": 0,
+          "a": 0,
+          "d": 0
         }
       ],
       "first": "2026-10-01",
@@ -222,10 +244,10 @@
     },
     {
       "login": "emtypyie",
-      "commits": 22,
-      "mergedPRs": 3,
-      "additions": 4137,
-      "deletions": 1248,
+      "commits": 24,
+      "mergedPRs": 4,
+      "additions": 4186,
+      "deletions": 1264,
       "weeks": [
         {
           "c": 0,
@@ -311,10 +333,20 @@
           "c": 1,
           "a": 70,
           "d": 8
+        },
+        {
+          "c": 2,
+          "a": 49,
+          "d": 16
+        },
+        {
+          "c": 0,
+          "a": 0,
+          "d": 0
         }
       ],
       "first": "2026-10-07",
-      "last": "2026-10-26",
+      "last": "2026-10-29",
       "name": "emty",
       "avatar": "https://avatars.githubusercontent.com/u/208377404?s=160",
       "profile": "https://github.com/emtypyie"
@@ -410,6 +442,16 @@
           "c": 3,
           "a": 38,
           "d": 45
+        },
+        {
+          "c": 0,
+          "a": 0,
+          "d": 0
+        },
+        {
+          "c": 0,
+          "a": 0,
+          "d": 0
         }
       ],
       "first": "2026-10-11",
