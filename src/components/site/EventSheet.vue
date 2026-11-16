@@ -102,15 +102,12 @@
                   </div>
                 </dl>
 
+                <!-- PANBS: the button sits above the description so a long one never buries it. -->
+                <PanbsRegister v-if="panbsCta" :e="e" />
+
                 <p v-if="e.desc" class="desc">{{ e.desc }}</p>
 
-                <PanbsRegister
-                  v-if="e.panbs && e.dbId && e.stage !== 'past'"
-                  :event-id="e.dbId"
-                  :live="e.stage === 'live'"
-                  :registers="e.registers"
-                />
-                <template v-else-if="e.stage && e.stage !== 'past'">
+                <template v-if="!panbsCta && e.stage && e.stage !== 'past'">
                   <button
                     type="button"
                     class="verify"
@@ -146,7 +143,7 @@
                     </svg>
                   </a>
                 </template>
-                <button v-else type="button" class="verify" @click="toLounge">
+                <button v-else-if="!panbsCta" type="button" class="verify" @click="toLounge">
                   <span>
                     <strong>Took part?</strong>
                     Get your participation certificate in the members’ lounge
@@ -207,6 +204,7 @@ function toLounge() {
 }
 
 const e = computed(() => (ev.open ? byId[ev.open] : null));
+const panbsCta = computed(() => !!(e.value?.panbs && e.value.dbId && e.value.stage !== 'past'));
 const idx = computed(() => props.list.findIndex((x) => x.id === ev.open));
 const panel = ref(null);
 const body = ref(null);

@@ -66,7 +66,11 @@ A guest who picks Sundarbans but is not on the roster is kept as picked; the adm
   everyone (signed in or not, registered or not). `get_panbs_join_link(event_id)` (anon) returns the
   event's meeting link only inside that window, and only for a published, public PANBS event.
   House events never expose their link publicly.
-- Outside the window the sheet shows the registration form. After registering, or when the email is
-  already registered (PT409), it says the Join button appears on the same page 15 minutes before
-  the start.
+- Outside the window the sheet shows one **Register** button right under the event facts, above the
+  description, so a long description never pushes it down. It opens the form in a pop-up (event art
+  banner, title, date, fields). Signed-in members go to the Lounge form instead.
+- After registering, or when the email is already registered (PT409), the pop-up says "You're
+  registered" or "Already registered" with one line: join from this page when it starts. The sheet
+  button turns into a quiet registered row. Copy stays short; the email hint is "Use your IITM
+  email only."
 - Public copy calls the members' area the **Members Lounge**.

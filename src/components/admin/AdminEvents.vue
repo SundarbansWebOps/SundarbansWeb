@@ -324,8 +324,7 @@
             placeholder="https://meet.google.com/…"
           />
           <small v-if="form.panbs">
-            PANBS: everyone sees a Join button on the public event page from 15 minutes before the
-            start until the end. No registration needed to join.
+            PANBS: shown as a Join button on the public event page from 15 minutes before the start.
           </small>
           <small v-else-if="form.entry_mode === 'open'">
             Members see this in the Lounge when the session goes live. Public visitors do not.

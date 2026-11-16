@@ -1,179 +1,207 @@
 <!--
-  PANBS registration on the public event sheet (spec 007). Anyone with an IITM student email
-  registers here without signing in; the server files them as a member or a guest by email.
-  Signed-in members get a link to the same form in the Members Lounge instead. From 15 minutes
-  before the start until the end, everyone gets a Join button instead of the form.
+  PANBS on the public event sheet (spec 007): one button that sits under the event facts, so a long
+  description never pushes it out of sight. Register opens a pop-up with the form; anyone with an
+  IITM student email registers without signing in, and the server files them as member or guest.
+  Signed-in members go to the same form in the Members Lounge. From 15 minutes before the start
+  until the end, the button is Join now and opens the meeting.
 -->
 <template>
-  <section class="reg" aria-labelledby="reg-h">
-    <p v-if="state === 'loading'" class="note">Loading…</p>
+  <div class="panbs-cta">
+    <div v-if="state === 'loading'" class="cta quiet" aria-busy="true">Loading…</div>
 
-    <template v-else-if="state === 'join'">
-      <h3 id="reg-h">{{ live ? 'Happening now' : 'Starting soon' }}</h3>
-      <a class="go join" :href="joinLink" target="_blank" rel="noopener noreferrer">
-        <span><i class="beat" aria-hidden="true" />Join now</span>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-      </a>
-      <p class="note">Open to every IITM BS student. No registration needed to join.</p>
-    </template>
+    <a
+      v-else-if="state === 'join'"
+      class="cta"
+      :href="joinLink"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      <i class="beat" aria-hidden="true" /><span>Join now</span
+      ><svg class="arr" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 12h14M13 6l6 6-6 6" />
+      </svg>
+    </a>
 
-    <p v-else-if="state === 'wait'" class="note">
-      <strong>Happening now.</strong> The joining link isn’t up yet. Check back in a minute.
-    </p>
-    <p v-else-if="state === 'closed'" class="note">Registration for this event is closed.</p>
+    <div v-else-if="state === 'wait'" class="cta quiet">Starting in a moment</div>
+    <div v-else-if="state === 'closed'" class="cta quiet">Registration closed</div>
 
-    <template v-else-if="state === 'done'">
-      <div class="done" role="status">
-        <strong id="reg-h">You’re registered</strong>
-        <span v-if="result?.kind === 'member'">
-          It’s filed with your Sundarbans account. You’ll see it in the Members Lounge when you log
-          in.
-        </span>
-        <span v-else-if="result?.kind">We’ve got your registration for {{ form.title }}.</span>
-        <span v-else>This email is already registered for {{ form.title }}.</span>
-        <span
-          >Come back to this page when it starts: the Join button appears here 15 minutes
-          before.</span
-        >
-      </div>
-    </template>
+    <div v-else-if="state === 'done'" class="cta quiet ok" role="status">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4L19 7" /></svg>
+      {{ result?.kind ? 'You’re registered' : 'Already registered' }}
+    </div>
 
-    <template v-else-if="state === 'ready' || state === 'sending'">
-      <template v-if="signedIn">
-        <h3 id="reg-h">Register</h3>
-        <RouterLink class="go" :to="`/lounge/forms/${form.id}`" @click="closeEvent()">
-          Open the form in the Members Lounge
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-        </RouterLink>
-      </template>
+    <RouterLink
+      v-else-if="signedIn"
+      class="cta"
+      :to="`/lounge/forms/${form.id}`"
+      @click="closeEvent()"
+      ><span>Register</span
+      ><svg class="arr" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 12h14M13 6l6 6-6 6" /></svg
+    ></RouterLink>
+    <button v-else type="button" class="cta" @click="open">
+      <span>Register</span
+      ><svg class="arr" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 12h14M13 6l6 6-6 6" />
+      </svg>
+    </button>
 
-      <form v-else novalidate @submit.prevent="send">
-        <h3 id="reg-h">{{ form.title || 'Register' }}</h3>
-        <p v-if="form.description" class="lede">{{ form.description }}</p>
-        <p class="lede">
-          Sundarbans member?
-          <a href="#" @click.prevent="logIn">Log in to register from the Members Lounge</a>.
-        </p>
+    <dialog
+      ref="dlg"
+      class="pop"
+      aria-labelledby="pop-h"
+      @keydown.stop
+      @close="onClose"
+      @click.self="dlg.close()"
+    >
+      <div v-if="form" class="sheet">
+        <figure class="banner" :class="`w-${e.wing}`" aria-hidden="true">
+          <img v-if="e.image" :src="img.card(e.image)" alt="" />
+          <img v-else-if="POSTER_ART[e.wing]" class="fig" :src="POSTER_ART[e.wing]" alt="" />
+          <span class="tag">PANBS</span>
+        </figure>
+        <button type="button" class="x" title="Close" @click="dlg.close()">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          <span class="visually-hidden">Close</span>
+        </button>
 
-        <div class="grid">
-          <label class="f">
-            <span>Name</span>
-            <input
-              v-model.trim="who.name"
-              required
-              maxlength="200"
-              autocomplete="name"
-              :disabled="busy"
-            />
-          </label>
-          <label class="f">
-            <span>Student email</span>
-            <input
-              v-model.trim="who.email"
-              type="email"
-              required
-              maxlength="320"
-              autocomplete="email"
-              placeholder="you@ds.study.iitm.ac.in"
-              :aria-invalid="emailBad ? 'true' : undefined"
-              :disabled="busy"
-            />
-            <small v-if="emailBad" class="bad"
-              >Use your IITM student email (…study.iitm.ac.in).</small
-            >
-          </label>
-          <label class="f">
-            <span>Your house</span>
-            <select v-model="who.house" required :disabled="busy">
-              <option value="">Choose</option>
-              <option v-for="h in form.houses" :key="h" :value="h">{{ h }}</option>
-            </select>
-          </label>
-          <label class="f">
-            <span>Phone <small>optional</small></span>
-            <input
-              v-model.trim="who.phone"
-              type="tel"
-              inputmode="tel"
-              maxlength="20"
-              autocomplete="tel"
-              placeholder="+91 98765 43210"
-              :disabled="busy"
-            />
-          </label>
-
-          <template v-for="field in asked" :key="field.key">
-            <label v-if="field.type === 'select'" class="f">
-              <span>{{ field.label }} <small v-if="!field.required">optional</small></span>
-              <select v-model="answers[field.key]" :required="field.required" :disabled="busy">
-                <option value="">Choose</option>
-                <option v-for="o in field.options || []" :key="o" :value="o">{{ o }}</option>
-              </select>
-            </label>
-            <fieldset v-else-if="field.type === 'multiselect'" class="f wide">
-              <legend>{{ field.label }} <small v-if="!field.required">optional</small></legend>
-              <label v-for="o in field.options || []" :key="o" class="chk">
-                <input
-                  type="checkbox"
-                  :checked="(answers[field.key] || []).includes(o)"
-                  :disabled="busy"
-                  @change="toggle(field.key, o, $event.target.checked)"
-                />
-                {{ o }}
-              </label>
-            </fieldset>
-            <label v-else-if="field.type === 'checkbox'" class="chk wide">
-              <input v-model="answers[field.key]" type="checkbox" :disabled="busy" />
-              {{ field.label }}
-            </label>
-            <label v-else class="f" :class="{ wide: field.type === 'textarea' }">
-              <span>{{ field.label }} <small v-if="!field.required">optional</small></span>
-              <textarea
-                v-if="field.type === 'textarea'"
-                v-model="answers[field.key]"
-                rows="3"
-                maxlength="10000"
-                :required="field.required"
-                :disabled="busy"
-              />
-              <input
-                v-else
-                v-model="answers[field.key]"
-                :type="
-                  field.type === 'email'
-                    ? 'email'
-                    : field.type === 'phone' || field.type === 'tel'
-                      ? 'tel'
-                      : 'text'
-                "
-                maxlength="10000"
-                :required="field.required"
-                :disabled="busy"
-              />
-            </label>
-          </template>
+        <div v-if="sent" class="inner done" role="status">
+          <span class="tick" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="m5 12.5 4.2 4L19 7" /></svg>
+          </span>
+          <h2 id="pop-h">{{ result?.kind ? 'You’re registered' : 'Already registered' }}</h2>
+          <p class="sub">Join from this page when it starts.</p>
+          <button type="button" class="cta" @click="dlg.close()">Done</button>
         </div>
 
-        <p v-if="error" class="err" role="alert">{{ error }}</p>
-        <button type="submit" class="send" :disabled="busy">
-          {{ busy ? 'Registering…' : 'Register' }}
-        </button>
-      </form>
-    </template>
-  </section>
+        <form v-else class="inner" novalidate @submit.prevent="send">
+          <p class="kick mono">Register</p>
+          <h2 id="pop-h">{{ e.title }}</h2>
+          <p class="sub">
+            {{ fullDate(e) }}<template v-if="e.time"> · {{ e.time }}</template>
+          </p>
+
+          <div class="fields">
+            <label class="f">
+              <span>Name</span>
+              <input
+                v-model.trim="who.name"
+                required
+                maxlength="200"
+                autocomplete="name"
+                :disabled="busy"
+              />
+            </label>
+            <label class="f">
+              <span>Student email</span>
+              <input
+                v-model.trim="who.email"
+                type="email"
+                required
+                maxlength="320"
+                autocomplete="email"
+                placeholder="you@ds.study.iitm.ac.in"
+                :aria-invalid="emailBad ? 'true' : undefined"
+                :disabled="busy"
+              />
+              <small v-if="emailBad" class="bad">Use your IITM email only.</small>
+            </label>
+            <label class="f">
+              <span>Your house</span>
+              <select v-model="who.house" required :disabled="busy">
+                <option value="">Choose</option>
+                <option v-for="h in form.houses" :key="h" :value="h">{{ h }}</option>
+              </select>
+            </label>
+            <label class="f">
+              <span>Phone <small>optional</small></span>
+              <input
+                v-model.trim="who.phone"
+                type="tel"
+                inputmode="tel"
+                maxlength="20"
+                autocomplete="tel"
+                placeholder="98765 43210"
+                :disabled="busy"
+              />
+            </label>
+
+            <template v-for="field in asked" :key="field.key">
+              <label v-if="field.type === 'select'" class="f">
+                <span>{{ field.label }} <small v-if="!field.required">optional</small></span>
+                <select v-model="answers[field.key]" :required="field.required" :disabled="busy">
+                  <option value="">Choose</option>
+                  <option v-for="o in field.options || []" :key="o" :value="o">{{ o }}</option>
+                </select>
+              </label>
+              <fieldset v-else-if="field.type === 'multiselect'" class="f">
+                <legend>{{ field.label }} <small v-if="!field.required">optional</small></legend>
+                <label v-for="o in field.options || []" :key="o" class="chk">
+                  <input
+                    type="checkbox"
+                    :checked="(answers[field.key] || []).includes(o)"
+                    :disabled="busy"
+                    @change="toggle(field.key, o, $event.target.checked)"
+                  />
+                  {{ o }}
+                </label>
+              </fieldset>
+              <label v-else-if="field.type === 'checkbox'" class="chk">
+                <input v-model="answers[field.key]" type="checkbox" :disabled="busy" />
+                {{ field.label }}
+              </label>
+              <label v-else class="f">
+                <span>{{ field.label }} <small v-if="!field.required">optional</small></span>
+                <textarea
+                  v-if="field.type === 'textarea'"
+                  v-model="answers[field.key]"
+                  rows="3"
+                  maxlength="10000"
+                  :required="field.required"
+                  :disabled="busy"
+                />
+                <input
+                  v-else
+                  v-model="answers[field.key]"
+                  :type="
+                    field.type === 'email'
+                      ? 'email'
+                      : field.type === 'phone' || field.type === 'tel'
+                        ? 'tel'
+                        : 'text'
+                  "
+                  maxlength="10000"
+                  :required="field.required"
+                  :disabled="busy"
+                />
+              </label>
+            </template>
+          </div>
+
+          <p v-if="error" class="err" role="alert">{{ error }}</p>
+          <button type="submit" class="cta" :disabled="busy">
+            <span>{{ busy ? 'Registering…' : 'Register' }}</span>
+            <svg v-if="!busy" class="arr" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </button>
+          <p class="member">
+            Sundarbans member? <a href="#" @click.prevent="logIn">Log in instead</a>
+          </p>
+        </form>
+      </div>
+    </dialog>
+  </div>
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue';
-import { closeEvent } from '../../lib/events.js';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
+import { closeEvent, fullDate, img } from '../../lib/events.js';
+import { POSTER_ART } from '../../lib/art.js';
 import { signedIn, signInWithGoogle } from '../../lib/auth.js';
 import { getPanbsForm, getPanbsJoinLink, submitPanbsRegistration } from '../../lib/lounge.js';
 
-const props = defineProps({
-  eventId: { type: String, required: true },
-  live: { type: Boolean, default: false },
-  registers: { type: Boolean, default: true },
-});
+const props = defineProps({ e: { type: Object, required: true } });
 
 // Mirrors the server rule in submit_panbs_registration; the server stays the authority.
 const STUDENT_EMAIL = /^[a-z0-9._%+-]+@([a-z0-9-]+\.)*study\.iitm\.ac\.in$/i;
@@ -181,6 +209,8 @@ const STUDENT_EMAIL = /^[a-z0-9._%+-]+@([a-z0-9-]+\.)*study\.iitm\.ac\.in$/i;
 const FIXED = new Set(['name', 'email', 'phone']);
 
 const state = ref('loading'); // loading | join | wait | ready | sending | done | closed
+const dlg = ref(null);
+const sent = ref(false); // the pop-up shows the result until it closes
 const joinLink = ref('');
 const form = ref(null);
 const result = ref(null);
@@ -194,26 +224,28 @@ const asked = computed(() => (form.value?.fields || []).filter((f) => !FIXED.has
 const emailBad = computed(() => tried.value && !STUDENT_EMAIL.test(who.email));
 
 watch(
-  () => [props.eventId, props.live],
-  async ([id]) => {
+  () => [props.e.dbId, props.e.stage],
+  async ([id, stage]) => {
+    dlg.value?.close();
     state.value = 'loading';
     error.value = '';
     tried.value = false;
+    sent.value = false;
     try {
-      // The server releases the link only inside the join window, so it decides Join vs form.
+      // The server releases the link only inside the join window, so it decides Join vs Register.
       const link = await getPanbsJoinLink(id).catch(() => null);
-      if (id !== props.eventId) return;
+      if (id !== props.e.dbId) return;
       if (link) {
         joinLink.value = link;
         state.value = 'join';
         return;
       }
-      if (props.live) {
+      if (stage === 'live') {
         state.value = 'wait';
         return;
       }
-      const f = props.registers ? await getPanbsForm(id) : null;
-      if (id !== props.eventId) return;
+      const f = props.e.registers ? await getPanbsForm(id) : null;
+      if (id !== props.e.dbId) return;
       form.value = f;
       for (const k of Object.keys(answers)) delete answers[k];
       for (const field of f?.fields || []) {
@@ -222,11 +254,22 @@ watch(
       }
       state.value = f ? 'ready' : 'closed';
     } catch {
-      if (id === props.eventId) state.value = 'closed';
+      if (id === props.e.dbId) state.value = 'closed';
     }
   },
   { immediate: true }
 );
+
+async function open() {
+  dlg.value?.showModal();
+  await nextTick();
+  dlg.value?.querySelector('input')?.focus();
+}
+
+function onClose() {
+  error.value = '';
+  sent.value = false;
+}
 
 function toggle(key, opt, on) {
   const cur = answers[key] || [];
@@ -241,7 +284,7 @@ function phoneOut(raw) {
 
 function missing() {
   if (!who.name) return 'Enter your name.';
-  if (!STUDENT_EMAIL.test(who.email)) return 'Use your IITM student email (…study.iitm.ac.in).';
+  if (!STUDENT_EMAIL.test(who.email)) return 'Use your IITM email only.';
   if (!who.house) return 'Choose your house.';
   for (const f of asked.value) {
     if (!f.required) continue;
@@ -267,16 +310,18 @@ async function send() {
       phone: who.phone ? phoneOut(who.phone) : null,
       answers: { ...answers },
     });
+    sent.value = true;
     state.value = 'done';
-  } catch (e) {
-    if (e?.code === 'PT409') {
+  } catch (err) {
+    if (err?.code === 'PT409') {
       result.value = null;
+      sent.value = true;
       state.value = 'done';
       return;
     }
-    // Database rules raise readable messages (closed, already registered, bad email/phone).
-    const known = ['22023', '42501'].includes(e?.code);
-    error.value = known && e.message ? e.message : 'Could not register. Try again in a moment.';
+    // Database rules raise readable messages (closed, bad email or phone).
+    const known = ['22023', '42501'].includes(err?.code);
+    error.value = known && err.message ? err.message : 'Could not register. Try again.';
     state.value = 'ready';
   }
 }
@@ -292,39 +337,225 @@ async function logIn() {
 </script>
 
 <style scoped>
-.reg {
-  display: grid;
-  gap: 12px;
-  padding: 18px;
-  border: 1.5px solid var(--mari);
-  border-radius: 14px;
-  background: var(--mari-soft);
-}
-h3 {
-  margin: 0;
-  font-size: 19px;
+/* One solid ink button, the size of the sheet's "Took part?" row. Not a pill: soft corners. */
+.cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 0 20px;
+  border: 1.5px solid var(--ink);
+  border-radius: 12px;
+  background: var(--ink);
+  color: var(--paper);
+  font: inherit;
+  font-size: 16px;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  cursor: pointer;
+  /* A faint top light makes the ink read as a solid object, not a flat fill. */
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--paper) 16%, transparent),
+    0 1px 2px color-mix(in srgb, var(--ink) 25%, transparent);
+  transition:
+    transform 0.45s var(--ease-spring),
+    box-shadow 0.45s var(--ease-out),
+    letter-spacing 0.45s var(--ease-out);
 }
-form {
-  display: grid;
-  gap: 12px;
+/* Hover: the button lifts on a deep soft shadow, the label opens up and an arrow slides in.
+   Press: it sinks and settles. No colour change. */
+.cta .arr {
+  width: 18px;
+  height: 18px;
+  margin-right: -28px;
+  opacity: 0;
+  transform: translateX(-8px);
+  transition:
+    opacity 0.3s var(--ease-out),
+    transform 0.45s var(--ease-spring),
+    margin 0.45s var(--ease-out);
 }
-.lede,
-.note {
+.cta:hover:not(:disabled, .quiet) {
+  transform: translateY(-3px);
+  letter-spacing: 0.04em;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--paper) 22%, transparent),
+    0 18px 34px -16px color-mix(in srgb, var(--ink) 80%, transparent),
+    0 4px 10px -4px color-mix(in srgb, var(--ink) 40%, transparent);
+}
+.cta:hover:not(:disabled, .quiet) .arr {
+  margin-right: 0;
+  opacity: 1;
+  transform: none;
+}
+.cta:active:not(:disabled, .quiet) {
+  transform: translateY(0) scale(0.975);
+  box-shadow:
+    inset 0 2px 6px color-mix(in srgb, var(--ink) 50%, transparent),
+    0 1px 2px color-mix(in srgb, var(--ink) 25%, transparent);
+  transition-duration: 0.12s;
+}
+.cta:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 4px;
+}
+.cta:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.cta.quiet {
+  border: 1.5px dashed var(--line-strong);
+  background: transparent;
+  color: var(--ink-2);
+  font-weight: 600;
+  cursor: default;
+}
+.cta.ok {
+  border-style: solid;
+  color: var(--ink);
+}
+.cta svg,
+.tick svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.beat {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--verm);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--verm) 30%, transparent);
+  animation: beat 1.6s ease-in-out infinite;
+}
+@keyframes beat {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
+}
+
+/* The pop-up: a paper card on the site, with the event's poster as its banner. */
+.pop {
+  width: min(500px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 30px 80px -30px color-mix(in srgb, var(--ink) 60%, transparent);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.pop[open] {
+  animation: pop-in 0.38s var(--ease-out);
+}
+.pop::backdrop {
+  background: color-mix(in srgb, var(--ink) 45%, transparent);
+  backdrop-filter: blur(3px);
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+}
+.sheet {
+  position: relative;
+}
+.banner {
+  position: relative;
   margin: 0;
+  height: 132px;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      90% 90% at 50% 100%,
+      color-mix(in srgb, var(--w) 22%, transparent),
+      transparent
+    ),
+    var(--sunk);
+  border-bottom: 1px solid var(--line);
+}
+.banner img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.banner .fig {
+  object-fit: contain;
+  padding-top: 14px;
+}
+.banner .tag {
+  position: absolute;
+  left: 20px;
+  bottom: 12px;
+  padding: 3px 9px;
+  border-radius: 99px;
+  background: var(--mari);
+  color: var(--on-mari);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+}
+.x {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink);
+}
+.x svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.inner {
+  display: grid;
+  gap: 14px;
+  padding: 20px 24px 22px;
+}
+.kick {
+  margin: 0 0 -8px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+h2 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  text-wrap: balance;
+}
+.sub {
+  margin: -6px 0 2px;
   font-size: 14.5px;
-  line-height: 1.5;
+  font-weight: 600;
   color: var(--ink-2);
 }
-.lede a {
-  color: var(--mari-ink);
-  font-weight: 650;
-}
-.grid {
+.fields {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 14px;
+  gap: 12px;
 }
 .f {
   display: grid;
@@ -334,10 +565,7 @@ form {
   padding: 0;
   border: 0;
   font-size: 13.5px;
-  font-weight: 600;
-}
-.wide {
-  grid-column: 1 / -1;
+  font-weight: 650;
 }
 .f small {
   font-weight: 500;
@@ -345,14 +573,16 @@ form {
 }
 .f small.bad {
   color: var(--verm);
+  font-weight: 600;
 }
 .f input,
 .f select,
 .f textarea {
   width: 100%;
   min-width: 0;
+  min-height: 44px;
   padding: 10px 12px;
-  border: 1px solid var(--line-strong);
+  border: 1.5px solid var(--line-strong);
   border-radius: 10px;
   background: var(--card);
   color: var(--ink);
@@ -362,8 +592,9 @@ form {
 .f input:focus-visible,
 .f select:focus-visible,
 .f textarea:focus-visible {
-  outline: 2px solid var(--mari);
-  outline-offset: 1px;
+  outline: none;
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mari) 45%, transparent);
 }
 .f input[aria-invalid='true'] {
   border-color: var(--verm);
@@ -375,7 +606,7 @@ form {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: 14.5px;
   font-weight: 500;
 }
 .err {
@@ -384,91 +615,53 @@ form {
   font-weight: 600;
   color: var(--verm);
 }
-.send {
-  justify-self: start;
-  padding: 11px 22px;
-  border: 0;
-  border-radius: 99px;
-  background: var(--mari);
-  color: var(--on-mari);
-  font: inherit;
-  font-weight: 700;
-  transition: transform 0.2s var(--ease-spring);
+.member {
+  margin: -2px 0 0;
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--ink-3);
 }
-.send:hover:not(:disabled) {
-  transform: translateY(-1px);
-}
-.send:disabled {
-  opacity: 0.6;
-}
-.go {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 16px;
-  border-radius: 12px;
-  background: var(--mari);
-  color: var(--on-mari);
-  font-weight: 700;
-  text-decoration: none;
-}
-.go svg {
-  width: 20px;
-  height: 20px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  transition: transform 0.3s var(--ease-out);
-}
-.go:hover svg {
-  transform: translateX(4px);
+.member a {
+  color: var(--ink);
+  font-weight: 650;
 }
 .done {
+  justify-items: center;
+  text-align: center;
+  padding-top: 26px;
+}
+.done .sub {
+  margin: -6px 0 6px;
+}
+.tick {
   display: grid;
-  gap: 4px;
-  font-size: 14.5px;
-  color: var(--ink-2);
-}
-.join {
-  padding: 14px 18px;
-  font-size: 17px;
-}
-.join span {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-.beat {
-  width: 9px;
-  height: 9px;
+  place-items: center;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
-  background: var(--verm);
-  animation: beat 1.6s ease-in-out infinite;
-}
-@keyframes beat {
-  50% {
-    opacity: 0.3;
-    transform: scale(0.7);
-  }
+  background: var(--ink);
+  color: var(--paper);
 }
 @media (prefers-reduced-motion: reduce) {
-  .beat {
+  .beat,
+  .pop[open] {
     animation: none;
   }
-}
-.note strong {
-  color: var(--ink);
-}
-.done strong {
-  font-size: 19px;
-  color: var(--ink);
+  .cta,
+  .cta .arr {
+    transition: none;
+  }
 }
 @media (max-width: 560px) {
-  .grid {
-    grid-template-columns: minmax(0, 1fr);
+  .pop {
+    width: 100%;
+    max-width: none;
+    max-height: 92dvh;
+    margin: auto 0 0;
+    border-radius: 18px 18px 0 0;
+  }
+  .inner {
+    padding: 18px 18px 22px;
   }
 }
 </style>

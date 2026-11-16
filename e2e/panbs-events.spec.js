@@ -1,4 +1,4 @@
-// PANBS events: open to every IITM BS student, registration on the event page (spec 007).
+// PANBS events: open to every IITM BS student, registration in a pop-up on the event page (spec 007).
 // Supabase is mocked.
 import { test, expect } from '@playwright/test';
 import { callTo, mockSupabase } from './supabase-mock.js';
@@ -58,20 +58,27 @@ test('a signed-out student registers for a PANBS event on the event page', async
   await expect(
     sheet.getByRole('button', { name: /Log in to the Members Lounge to join/ })
   ).toHaveCount(0);
-  // The name-prefill question is not asked twice.
-  await expect(sheet.getByLabel('Name', { exact: true })).toHaveCount(1);
-
-  await sheet.getByLabel('Name', { exact: true }).fill('Guest One');
-  await sheet.getByLabel('Student email').fill('guest@gmail.com');
-  await sheet.getByLabel('Your house').selectOption('Nallamala');
-  await sheet.getByLabel('Level').selectOption('Degree');
+  // Register opens the form in a pop-up over the sheet.
   await sheet.getByRole('button', { name: 'Register' }).click();
-  await expect(sheet.getByRole('alert')).toContainText('IITM student email');
+  const pop = page.locator('dialog[open]');
+  await expect(pop.getByRole('heading', { name: 'Paradox quiz' })).toBeVisible();
+  // The name-prefill question is not asked twice.
+  await expect(pop.getByLabel('Name', { exact: true })).toHaveCount(1);
+
+  await pop.getByLabel('Name', { exact: true }).fill('Guest One');
+  await pop.getByLabel('Student email').fill('guest@gmail.com');
+  await pop.getByLabel('Your house').selectOption('Nallamala');
+  await pop.getByLabel('Level').selectOption('Degree');
+  await pop.getByRole('button', { name: 'Register' }).click();
+  await expect(pop.getByRole('alert')).toContainText('Use your IITM email only');
   expect(calls.some((c) => c.path === '/rest/v1/rpc/submit_panbs_registration')).toBe(false);
 
-  await sheet.getByLabel('Student email').fill('21f1000001@ds.study.iitm.ac.in');
-  await sheet.getByLabel(/Phone/).fill('98765 43210');
-  await sheet.getByRole('button', { name: 'Register' }).click();
+  await pop.getByLabel('Student email').fill('21f1000001@ds.study.iitm.ac.in');
+  await pop.getByLabel(/Phone/).fill('98765 43210');
+  await pop.getByRole('button', { name: 'Register' }).click();
+  await expect(pop.getByRole('status')).toContainText('You’re registered');
+  await pop.getByRole('button', { name: 'Done' }).click();
+  // Closing the pop-up keeps the sheet open, now marked registered.
   await expect(sheet.getByRole('status')).toContainText('You’re registered');
 
   const sent = JSON.parse(
@@ -130,7 +137,7 @@ test('a live PANBS event shows Join instead of the form', async ({ page }) => {
   await expect(sheet.getByRole('button', { name: 'Register' })).toHaveCount(0);
 });
 
-test('registering twice says already registered and points to Join', async ({ page }) => {
+test('registering twice says already registered', async ({ page }) => {
   await mockSupabase(page, {
     signedIn: false,
     data: { list_public_events: [PANBS_EVENT], get_panbs_join_link: null, get_panbs_form: FORM },
@@ -150,12 +157,12 @@ test('registering twice says already registered and points to Join', async ({ pa
     .getByText('Paradox quiz')
     .first()
     .click();
-  const sheet = page.getByRole('dialog');
-  await sheet.getByLabel('Name', { exact: true }).fill('Guest One');
-  await sheet.getByLabel('Student email').fill('21f1000001@ds.study.iitm.ac.in');
-  await sheet.getByLabel('Your house').selectOption('Nallamala');
-  await sheet.getByLabel('Level').selectOption('Degree');
-  await sheet.getByRole('button', { name: 'Register' }).click();
-  await expect(sheet.getByRole('status')).toContainText('already registered');
-  await expect(sheet.getByRole('status')).toContainText('Join button appears here');
+  await page.getByRole('dialog').getByRole('button', { name: 'Register' }).click();
+  const pop = page.locator('dialog[open]');
+  await pop.getByLabel('Name', { exact: true }).fill('Guest One');
+  await pop.getByLabel('Student email').fill('21f1000001@ds.study.iitm.ac.in');
+  await pop.getByLabel('Your house').selectOption('Nallamala');
+  await pop.getByLabel('Level').selectOption('Degree');
+  await pop.getByRole('button', { name: 'Register' }).click();
+  await expect(pop.getByRole('status')).toContainText('Already registered');
 });
