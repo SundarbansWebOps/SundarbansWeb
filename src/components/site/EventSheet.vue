@@ -17,7 +17,8 @@
           tabindex="-1"
         >
           <header class="top">
-            <span class="wing"><i />{{ WINGS[e.wing].label }}</span>
+            <span v-if="e.panbs" class="panbs mono">PAN BS · Open to all IITM BS</span>
+            <span v-else class="wing"><i />{{ WINGS[e.wing].label }}</span>
             <span class="pos mono">{{ idx + 1 }} / {{ list.length }}</span>
             <span class="grow" />
             <button
@@ -101,9 +102,12 @@
                   </div>
                 </dl>
 
+                <!-- PANBS: the button sits above the description so a long one never buries it. -->
+                <PanbsRegister v-if="panbsCta" :e="e" />
+
                 <p v-if="e.desc" class="desc">{{ e.desc }}</p>
 
-                <template v-if="e.stage && e.stage !== 'past'">
+                <template v-if="!panbsCta && e.stage && e.stage !== 'past'">
                   <button
                     type="button"
                     class="verify"
@@ -113,7 +117,11 @@
                   >
                     <span>
                       <strong>{{ e.stage === 'live' ? 'Happening now' : 'Coming up' }}</strong>
-                      {{ signedIn ? 'Open in Launch to join' : 'Log in to Launch to join' }}
+                      {{
+                        signedIn
+                          ? 'Open the Members Lounge to join'
+                          : 'Log in to the Members Lounge to join'
+                      }}
                     </span>
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <path d="M5 12h14M13 6l6 6-6 6" />
@@ -135,7 +143,7 @@
                     </svg>
                   </a>
                 </template>
-                <button v-else type="button" class="verify" @click="toLounge">
+                <button v-else-if="!panbsCta" type="button" class="verify" @click="toLounge">
                   <span>
                     <strong>Took part?</strong>
                     Get your participation certificate in the members’ lounge
@@ -157,6 +165,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import TypePoster from './TypePoster.vue';
+import PanbsRegister from './PanbsRegister.vue';
 import { WINGS, byId, closeEvent, ev, fullDate, img, openEvent } from '../../lib/events.js';
 import { signedIn, signInWithGoogle } from '../../lib/auth.js';
 import { nav } from '../../lib/store.js';
@@ -169,7 +178,7 @@ function launchPath(stage) {
   return stage === 'live' ? '/lounge?room=live' : '/lounge?view=events';
 }
 
-// Live and upcoming join from Launch. Meet links stay off this public sheet.
+// Live and upcoming house events join from the Members Lounge. Meet links stay off this public sheet.
 function toLaunch() {
   const next = launchPath(e.value?.stage);
   closeEvent(async () => {
@@ -195,6 +204,7 @@ function toLounge() {
 }
 
 const e = computed(() => (ev.open ? byId[ev.open] : null));
+const panbsCta = computed(() => !!(e.value?.panbs && e.value.dbId && e.value.stage !== 'past'));
 const idx = computed(() => props.list.findIndex((x) => x.id === ev.open));
 const panel = ref(null);
 const body = ref(null);
@@ -321,6 +331,20 @@ function leave(el, done) {
   color: var(--w);
   font-size: 13px;
   font-weight: 650;
+}
+/* PANBS: a marigold pat plate (band, dotted inner line) instead of the wing chip. */
+.panbs {
+  padding: 5px 10px 4px;
+  border: 1px dotted color-mix(in srgb, var(--on-mari) 50%, transparent);
+  border-radius: 3px;
+  box-shadow: 0 0 0 2.5px var(--mari);
+  background: var(--mari);
+  color: var(--on-mari);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 .wing i {
   width: 8px;

@@ -50,7 +50,8 @@
             <span v-else-if="e.cancelled_at" class="adm-badge verm">cancelled</span>
             <span v-else-if="isLive(e)" class="adm-badge mari">live now</span>
             <span v-if="e.certificates_released_at" class="adm-badge mari">certificates</span>
-            <span v-if="e.is_public && !e.archive" class="adm-badge">public</span>
+            <span v-if="e.panbs" class="adm-badge mari">PAN BS</span>
+            <span v-else-if="e.is_public && !e.archive" class="adm-badge">public</span>
             <span v-if="e.entry_mode === 'open'" class="adm-badge">open to all</span>
           </div>
         </div>
@@ -114,7 +115,8 @@
         </label>
         <label v-if="isSuperAdmin" class="adm-field">
           <span>Scope</span>
-          <AdminSelect v-model="form.scope" :options="SA_SCOPES" @change="onScope" />
+          <AdminSelect v-model="form.scope" :options="saScopes" @change="onScope" />
+          <small v-if="form.panbs">{{ PANBS_NOTE }}</small>
         </label>
         <label v-if="isSuperAdmin && form.scope === 'region'" class="adm-field">
           <span>Region</span>
@@ -139,10 +141,13 @@
         </label>
         <label v-else-if="isRc && !form.published_at" class="adm-field">
           <span>Scope</span>
-          <AdminSelect v-model="form.scope" :options="rcScopes" />
-          <small v-if="form.scope === 'house'">A Super Admin approves house-wide events.</small>
+          <AdminSelect v-model="form.scope" :options="rcScopes" @change="onScope" />
+          <small v-if="form.panbs">{{ PANBS_NOTE }} A Super Admin approves it.</small>
+          <small v-else-if="form.scope === 'house'"
+            >A Super Admin approves house-wide events.</small
+          >
         </label>
-        <p v-else-if="!isSuperAdmin" class="adm-note wide">{{ lockedScope }}</p>
+        <p v-else-if="!isSuperAdmin && !form.panbs" class="adm-note wide">{{ lockedScope }}</p>
         <label class="adm-field">
           <span>Starts</span>
           <input
@@ -161,22 +166,26 @@
             :required="!form.archive"
           />
         </label>
-        <label v-if="isSuperAdmin" class="adm-check wide" :class="{ danger: form.archive }">
+        <label
+          v-if="isSuperAdmin && !form.panbs"
+          class="adm-check wide"
+          :class="{ danger: form.archive }"
+        >
           <input v-model="form.archive" type="checkbox" />
           <span>Archive (dateless historical record)</span>
         </label>
-        <div class="wide">
+        <div v-if="!form.panbs" class="wide">
           <p class="adm-kicker">Audience</p>
           <AdminCohortSelect v-if="cohorts" v-model="form.audience_cohorts" :cohorts="cohorts" />
         </div>
-        <div v-if="!form.archive && !membersOnlyEvent" class="adm-field wide">
+        <div v-if="!form.archive && !membersOnlyEvent && !form.panbs" class="adm-field wide">
           <label class="adm-check">
             <input v-model="form.is_public" type="checkbox" />
             <span>Public: also list it on the public Events page</span>
           </label>
           <small>Otherwise only its audience sees it in the Lounge until it ends.</small>
         </div>
-        <label class="adm-field wide">
+        <label v-if="!form.panbs" class="adm-field wide">
           <span>Registration</span>
           <AdminSelect v-model="form.entry_mode" :options="ENTRY_MODES" />
           <small v-if="form.entry_mode === 'open'">
@@ -298,9 +307,11 @@
         </div>
         <label class="adm-field wide">
           <span>{{
-            form.entry_mode === 'open'
-              ? "Members' meeting link"
-              : "Members' meeting link (optional)"
+            form.panbs
+              ? 'Meeting link'
+              : form.entry_mode === 'open'
+                ? "Members' meeting link"
+                : "Members' meeting link (optional)"
           }}</span>
           <input
             v-model.trim="form.gmail_link"
@@ -308,7 +319,11 @@
             type="url"
             placeholder="https://meet.google.com/…"
           />
-          <small v-if="form.entry_mode === 'open'">
+          <small v-if="form.panbs">
+            PAN BS: shown as a Join button on the public event page from 15 minutes before the
+            start.
+          </small>
+          <small v-else-if="form.entry_mode === 'open'">
             Members see this in the Lounge when the session goes live. Public visitors do not.
           </small>
         </label>
@@ -624,14 +639,21 @@ const lockedScope = computed(() => {
 const myRegionName = computed(
   () => props.lookups.regions.find((r) => r.id === auth.dashboard?.region_id)?.name ?? 'your region'
 );
-const SA_SCOPES = [
+// PAN BS ("pan" as in pan-India; BS as in the degree) is a scope of its own: open to every IITM BS
+// student, not just the house.
+const PANBS_SCOPE = { value: 'panbs', label: 'PAN BS (every IITM BS student)' };
+const PANBS_NOTE =
+  'On the public Events page. Anyone with an IITM student email registers on the event page.';
+const saScopes = computed(() => [
   { value: 'house', label: 'House (every region)' },
   { value: 'region', label: 'A region' },
   { value: 'community', label: 'A community' },
-];
+  ...(canPanbs.value ? [PANBS_SCOPE] : []),
+]);
 const rcScopes = computed(() => [
   { value: 'region', label: `My region (${myRegionName.value})` },
   { value: 'house', label: 'Whole house' },
+  ...(canPanbs.value ? [PANBS_SCOPE] : []),
 ]);
 const ATTENDANCE_MODES = [
   { value: 'meet', label: 'Google Meet (≥20 minutes)' },
@@ -650,10 +672,13 @@ const columnOptions = computed(() => [
   { value: -1, label: 'Not in this file' },
   ...attend.headers.map((h, i) => ({ value: i, label: h })),
 ]);
-// An RC publishing a house-wide event files a request instead.
+// An RC publishing a house-wide or PAN BS event files a request instead.
 const needsApproval = computed(
   () =>
-    isRc.value && !isSuperAdmin.value && form.value?.scope === 'house' && !form.value?.published_at
+    isRc.value &&
+    !isSuperAdmin.value &&
+    ['house', 'panbs'].includes(form.value?.scope) &&
+    !form.value?.published_at
 );
 const posterPreview = (url) => img.thumb(url) ?? url;
 
@@ -753,9 +778,10 @@ async function edit(e) {
       audience_cohorts: e.audience_cohorts ?? [],
       attendance_mode: e.attendance_mode || 'meet',
       certificate_template_url: e.certificate_template_url ?? '',
-      scope: e.community_id ? 'community' : e.region_id ? 'region' : 'house',
+      scope: e.panbs ? 'panbs' : e.community_id ? 'community' : e.region_id ? 'region' : 'house',
       archive: !!e.archive,
       is_public: !!e.is_public,
+      panbs: !!e.panbs,
       entry_mode: e.entry_mode === 'open' ? 'open' : 'register',
     };
     boundForm.value = boundFormForEvent(await listForms().catch(() => []), e.id);
@@ -771,6 +797,7 @@ async function edit(e) {
       certificate_template_url: '',
       archive: false,
       is_public: false,
+      panbs: false,
       gmail_link: '',
       registration_link: '',
       ...defaultScope(),
@@ -779,7 +806,12 @@ async function edit(e) {
 }
 
 function onScope() {
-  if (form.value.scope === 'house') {
+  const wasPanbs = form.value.panbs;
+  form.value.panbs = form.value.scope === 'panbs';
+  // PAN BS forced Public; leaving it goes back to the members-only default.
+  if (wasPanbs && !form.value.panbs) form.value.is_public = false;
+  if (form.value.panbs) onPanbs();
+  else if (form.value.scope === 'house') {
     form.value.region_id = null;
     form.value.community_id = null;
   } else if (form.value.scope === 'region') {
@@ -791,7 +823,37 @@ function onScope() {
   }
 }
 
+// PANBS is only for house-wide events: a Super Admin, or an RC drafting one for approval.
+const canPanbs = computed(
+  () => !form.value?.archive && (isSuperAdmin.value || (isRc.value && !form.value?.published_at))
+);
+
+// PAN BS events are house-wide, public and for every cohort (the database enforces it).
+function onPanbs() {
+  Object.assign(form.value, {
+    region_id: null,
+    community_id: null,
+    audience_cohorts: [],
+    is_public: true,
+    entry_mode: 'register',
+  });
+}
+
 function payload() {
+  if (form.value.panbs) {
+    return {
+      ...form.value,
+      starts_at: fromLocal(form.value.starts),
+      ends_at: fromLocal(form.value.ends),
+      scope: 'house',
+      region_id: null,
+      community_id: null,
+      audience_cohorts: [],
+      is_public: true,
+      entry_mode: 'register',
+      archive: false,
+    };
+  }
   const rcHouse = isRc.value && !isSuperAdmin.value && form.value.scope === 'house';
   const scope = isSuperAdmin.value || rcHouse ? form.value : { ...form.value, ...defaultScope() };
   const communityId = scope.scope === 'community' ? scope.community_id : null;

@@ -206,14 +206,18 @@ test('the public Events page shows Public live and upcoming events above the arc
   ).toBeVisible();
 
   await soonSection.getByText('House fest').first().click();
-  await expect(page.getByRole('button', { name: /Log in to Launch to join/ })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /Log in to the Members Lounge to join/ })
+  ).toBeVisible();
   const register = page.getByRole('link', { name: /Open the sign-up form/ });
   await expect(register).toHaveAttribute('href', 'https://forms.gle/example');
   await page.getByRole('button', { name: 'Close' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
   await liveSection.getByText('Night quiz').first().click();
-  await expect(page.getByRole('button', { name: /Log in to Launch to join/ })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /Log in to the Members Lounge to join/ })
+  ).toBeVisible();
   await expect(page.getByText('Happening now')).toBeVisible();
   await expect(page.getByRole('link', { name: /Join on Meet/ })).toHaveCount(0);
 });

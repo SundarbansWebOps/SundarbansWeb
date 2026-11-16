@@ -65,6 +65,26 @@ export const listPublicPastEvents = () => rpc('list_public_past_events');
 // Archive + past + upcoming events marked Public (each with a stage). Falls back to the older
 // past-only RPC while a database without list_public_events is still deployed.
 export const listPublicEvents = () => rpc('list_public_events').catch(() => listPublicPastEvents());
+// PANBS: public registration for events open to all IITM BS (spec 007). Callable signed out.
+export const getPanbsForm = (eventId) => rpc('get_panbs_form', { p_event_id: eventId });
+export const getPanbsJoinLink = (eventId) => rpc('get_panbs_join_link', { p_event_id: eventId });
+export const submitPanbsRegistration = ({
+  formId,
+  email,
+  name,
+  house,
+  phone = null,
+  answers = {},
+}) =>
+  rpc('submit_panbs_registration', {
+    p_form_id: formId,
+    p_email: email,
+    p_name: name,
+    p_house: house,
+    p_phone: phone || null,
+    p_answers: answers,
+  });
+export const listFormGuests = (formId) => rpc('list_form_guests', { p_form_id: formId });
 export const getAvailableCohorts = () => rpc('get_available_cohorts');
 export const listForms = () => rpc('list_lounge_forms');
 export const saveForm = (form) => rpc('save_lounge_form', { p_form: form });

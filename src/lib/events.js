@@ -1,6 +1,6 @@
 // Past events, adapted from the data already on the live site.
 // Public Events lists Public upcoming/live events at the top, then the archive.
-// Joining happens in Launch (the Lounge); this page never shows a Meet link.
+// Joining happens in the Members Lounge; only a live PANBS event shows its link here.
 import { reactive, watch } from 'vue';
 import { router } from '../router/index.js';
 import { EVENTS } from '../data/events.data.js';
@@ -124,8 +124,12 @@ export function fromPublicRow(row) {
     // 'past' | 'live' | 'upcoming' (list_public_events); snapshot rows are all past.
     stage: row.stage ?? 'past',
     link: row.registration_link ?? null,
+    // PANBS: open to all IITM BS; registers = an open form takes public registrations.
+    panbs: !!row.panbs,
+    registers: !!row.registers,
     ...when,
     online: /online/i.test(`${dateText} ${row.location ?? ''}`),
+    end: row.ends_at && !Number.isNaN(Date.parse(row.ends_at)) ? new Date(row.ends_at) : null,
     at:
       row.starts_at && !Number.isNaN(Date.parse(row.starts_at))
         ? new Date(row.starts_at)
@@ -141,7 +145,7 @@ const snapshot = EVENTS.filter(notMeetup).map(fromPublicRow);
 snapshot.sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
 
 export const events = reactive([]);
-// Public live and upcoming rows (soonest first). Members-only events stay in Launch.
+// Public live and upcoming rows (soonest first). Members-only events stay in the Members Lounge.
 export const live = reactive([]);
 export const upcoming = reactive([]);
 export const byId = reactive({});

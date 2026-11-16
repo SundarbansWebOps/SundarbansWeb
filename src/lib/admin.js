@@ -7,6 +7,7 @@ import { auth, isHead, isRc, isSuperAdmin } from './auth.js';
 import {
   exportEventRecords as loungeExportEventRecords,
   exportFormResponses as loungeExportFormResponses,
+  listFormGuests as loungeListFormGuests,
   getAvailableCohorts as loungeGetAvailableCohorts,
   importAttendance as loungeImportAttendance,
   listAttendance as loungeListAttendance,
@@ -487,7 +488,7 @@ export function flattenExportRows(value) {
 // Events
 
 const EVENT_COLS =
-  'id, name, description, registration_link, gmail_link, starts_at, ends_at, community_id, region_id, published_at, audience_cohorts, attendance_mode, certificate_template_url, certificates_released_at, archive, source_key, display_date, image_url, event_type, wing, location, image_width, image_height, attendee_count, attendee_display, cancelled_at, deleted_at, created_at, updated_at, is_public, entry_mode, created_by';
+  'id, name, description, registration_link, gmail_link, starts_at, ends_at, community_id, region_id, published_at, audience_cohorts, attendance_mode, certificate_template_url, certificates_released_at, archive, source_key, display_date, image_url, event_type, wing, location, image_width, image_height, attendee_count, attendee_display, cancelled_at, deleted_at, created_at, updated_at, is_public, panbs, entry_mode, created_by';
 
 export async function listEvents({ view = 'upcoming' } = {}) {
   const now = new Date().toISOString();
@@ -579,6 +580,7 @@ export async function saveEvent(event, { publish = false, unpublish = false } = 
     attendee_count: event.attendee_count ?? null,
     attendee_display: event.attendee_display || null,
     is_public: !!event.is_public,
+    panbs: !!event.panbs,
     entry_mode: event.entry_mode === 'open' ? 'open' : 'register',
   };
   if (publish) row.published_at = new Date().toISOString();
@@ -816,6 +818,11 @@ export const deleteLoungeForm = (formId) =>
 
 export async function exportFormResponses(formId) {
   return asList(await loungeExportFormResponses(formId));
+}
+
+// PANBS guests on a form (spec 007); empty for house-only forms.
+export async function listFormGuests(formId) {
+  return asList(await loungeListFormGuests(formId));
 }
 
 // Reasons a reviewer can pick when rejecting a response; the text stays editable.
