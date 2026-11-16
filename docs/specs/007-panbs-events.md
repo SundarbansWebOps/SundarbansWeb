@@ -9,8 +9,9 @@ page, looks different from house events, and anyone with an IITM student email c
 the event page without signing in.
 
 - `events.panbs = true`. A PANBS event is always house-wide (no region, community or cohort) and
-  always Public (`is_public`). The admin only picks the type **PANBS**; there is no extra "public"
-  label.
+  always Public (`is_public`). The admin picks **PAN BS (every IITM BS student)** as the event's
+  Scope (a fourth option after House, A region, A community); there is no separate checkbox or
+  "public" label. Shown to people as "PAN BS" (pan as in pan-India; BS as in the degree).
 - **Who creates it:** Super Admins create and publish directly. An RC drafts it like any other
   house-wide event and asks a Super Admin to publish it (existing `event_publish` request, spec
   004). It stays hidden until approved.

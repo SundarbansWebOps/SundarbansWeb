@@ -37,7 +37,7 @@
       </span>
     </span>
     <span class="meta">
-      <b v-if="e.panbs" class="tag mono">PANBS</b><i v-else class="dot" />{{ e.type }}
+      <b v-if="e.panbs" class="tag mono">PAN BS</b><i v-else class="dot" />{{ e.type }}
       <template v-if="e.online"> · Online</template>
     </span>
     <strong class="title">{{ e.title }}</strong>

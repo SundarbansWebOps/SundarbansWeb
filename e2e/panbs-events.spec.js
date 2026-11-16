@@ -1,7 +1,7 @@
 // PANBS events: open to every IITM BS student, registration in a pop-up on the event page (spec 007).
 // Supabase is mocked.
 import { test, expect } from '@playwright/test';
-import { callTo, mockSupabase } from './supabase-mock.js';
+import { callTo, mockSupabase, pick } from './supabase-mock.js';
 
 test.beforeEach(({ page }) => page.emulateMedia({ reducedMotion: 'reduce' }));
 
@@ -54,7 +54,7 @@ test('a signed-out student registers for a PANBS event on the event page', async
   await soonSection.getByText('Paradox quiz').first().click();
 
   const sheet = page.getByRole('dialog');
-  await expect(sheet.getByText('PANBS · Open to all IITM BS')).toBeVisible();
+  await expect(sheet.getByText('PAN BS · Open to all IITM BS')).toBeVisible();
   await expect(
     sheet.getByRole('button', { name: /Log in to the Members Lounge to join/ })
   ).toHaveCount(0);
@@ -100,7 +100,7 @@ test('a signed-out student registers for a PANBS event on the event page', async
   await expect(page.getByRole('dialog').getByRole('button', { name: 'Register' })).toHaveCount(0);
 });
 
-test('a Super Admin makes an event PANBS', async ({ page }) => {
+test('a Super Admin picks PAN BS as the event scope', async ({ page }) => {
   const calls = await mockSupabase(page, {
     as: 'sa',
     data: { events: [{ id: EVENT_ID }] },
@@ -108,7 +108,8 @@ test('a Super Admin makes an event PANBS', async ({ page }) => {
   await page.goto('/#/admin?tab=events');
   await page.getByRole('button', { name: 'New event' }).click();
   await page.getByLabel('Name', { exact: true }).fill('Paradox quiz');
-  await page.getByLabel(/Type: PANBS/).check();
+  await pick(page, 'Scope', 'PAN BS (every IITM BS student)');
+  await expect(page.getByText(/Anyone with an IITM student email registers/)).toBeVisible();
   await expect(page.getByText('Public: also list it on the public Events page')).toHaveCount(0);
   await page.getByRole('button', { name: 'Save draft' }).click();
 

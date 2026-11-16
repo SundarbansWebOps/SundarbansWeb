@@ -17,7 +17,7 @@
           tabindex="-1"
         >
           <header class="top">
-            <span v-if="e.panbs" class="panbs mono">PANBS · Open to all IITM BS</span>
+            <span v-if="e.panbs" class="panbs mono">PAN BS · Open to all IITM BS</span>
             <span v-else class="wing"><i />{{ WINGS[e.wing].label }}</span>
             <span class="pos mono">{{ idx + 1 }} / {{ list.length }}</span>
             <span class="grow" />

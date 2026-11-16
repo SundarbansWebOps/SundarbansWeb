@@ -84,7 +84,7 @@
         <figure class="banner" :class="`w-${e.wing}`" aria-hidden="true">
           <img v-if="e.image" :src="img.card(e.image)" alt="" />
           <img v-else-if="POSTER_ART[e.wing]" class="fig" :src="POSTER_ART[e.wing]" alt="" />
-          <span class="tag mono">PANBS</span>
+          <span class="tag mono">PAN BS</span>
         </figure>
         <button type="button" class="x" title="Close" @click="dlg.close()">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
