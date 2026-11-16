@@ -68,7 +68,7 @@ A guest who picks Sundarbans but is not on the roster is kept as picked; the adm
   House events never expose their link publicly.
 - Outside the window the sheet shows one **Register** button right under the event facts, above the
   description, so a long description never pushes it down. It opens the form in a pop-up (event art
-  banner, title, date, fields). Signed-in members go to the Lounge form instead.
+  banner, title, date, fields); its submit button reads "Count me in". Signed-in members go to the Lounge form instead.
 - After registering, or when the email is already registered (PT409), the pop-up says "You're
   registered" or "Already registered" with one line: join from this page when it starts. The sheet
   button turns into a quiet registered row. Copy stays short; the email hint is "Use your IITM

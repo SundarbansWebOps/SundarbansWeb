@@ -16,10 +16,7 @@
       target="_blank"
       rel="noopener noreferrer"
     >
-      <i class="beat" aria-hidden="true" /><span>Join now</span
-      ><svg class="arr" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M5 12h14M13 6l6 6-6 6" />
-      </svg>
+      <i class="beat" aria-hidden="true" /><span>Join now</span>
     </a>
 
     <div v-else-if="state === 'wait'" class="cta quiet">Starting in a moment</div>
@@ -35,15 +32,31 @@
       class="cta"
       :to="`/lounge/forms/${form.id}`"
       @click="closeEvent()"
-      ><span>Register</span
-      ><svg class="arr" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M5 12h14M13 6l6 6-6 6" /></svg
-    ></RouterLink>
+      ><svg class="bloom" viewBox="-12 -12 24 24" aria-hidden="true">
+        <ellipse
+          v-for="a in 8"
+          :key="a"
+          rx="2.1"
+          ry="4.6"
+          cy="-5.6"
+          :transform="`rotate(${a * 45})`"
+        />
+        <circle class="core" r="2.4" /></svg
+      ><span>Register</span></RouterLink
+    >
     <button v-else type="button" class="cta" @click="open">
-      <span>Register</span
-      ><svg class="arr" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M5 12h14M13 6l6 6-6 6" />
+      <svg class="bloom" viewBox="-12 -12 24 24" aria-hidden="true">
+        <ellipse
+          v-for="a in 8"
+          :key="a"
+          rx="2.1"
+          ry="4.6"
+          cy="-5.6"
+          :transform="`rotate(${a * 45})`"
+        />
+        <circle class="core" r="2.4" />
       </svg>
+      <span>Register</span>
     </button>
 
     <dialog
@@ -75,7 +88,6 @@
         </div>
 
         <form v-else class="inner" novalidate @submit.prevent="send">
-          <p class="kick mono">Register</p>
           <h2 id="pop-h">{{ e.title }}</h2>
           <p class="sub">
             {{ fullDate(e) }}<template v-if="e.time"> · {{ e.time }}</template>
@@ -180,10 +192,18 @@
 
           <p v-if="error" class="err" role="alert">{{ error }}</p>
           <button type="submit" class="cta" :disabled="busy">
-            <span>{{ busy ? 'Registering…' : 'Register' }}</span>
-            <svg v-if="!busy" class="arr" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 12h14M13 6l6 6-6 6" />
+            <svg class="bloom" viewBox="-12 -12 24 24" aria-hidden="true">
+              <ellipse
+                v-for="a in 8"
+                :key="a"
+                rx="2.1"
+                ry="4.6"
+                cy="-5.6"
+                :transform="`rotate(${a * 45})`"
+              />
+              <circle class="core" r="2.4" />
             </svg>
+            <span>{{ busy ? 'Saving your seat…' : 'Count me in' }}</span>
           </button>
           <p class="member">
             Sundarbans member? <a href="#" @click.prevent="logIn">Log in instead</a>
@@ -356,47 +376,45 @@ async function logIn() {
   letter-spacing: 0.01em;
   text-decoration: none;
   cursor: pointer;
-  /* A faint top light makes the ink read as a solid object, not a flat fill. */
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--paper) 16%, transparent),
-    0 1px 2px color-mix(in srgb, var(--ink) 25%, transparent);
   transition:
-    transform 0.45s var(--ease-spring),
-    box-shadow 0.45s var(--ease-out),
-    letter-spacing 0.45s var(--ease-out);
+    background-color 0.3s ease,
+    transform 0.35s var(--ease-out);
 }
-/* Hover: the button lifts on a deep soft shadow, the label opens up and an arrow slides in.
-   Press: it sinks and settles. No colour change. */
-.cta .arr {
-  width: 18px;
-  height: 18px;
-  margin-right: -28px;
-  opacity: 0;
-  transform: translateX(-8px);
-  transition:
-    opacity 0.3s var(--ease-out),
-    transform 0.45s var(--ease-spring),
-    margin 0.45s var(--ease-out);
-}
+/* Hover is quiet: the ink softens a touch and the marigold bloom turns a quarter. A press sinks
+   the button quickly and lets it ease back. Nothing lifts, no shadows. */
 .cta:hover:not(:disabled, .quiet) {
-  transform: translateY(-3px);
-  letter-spacing: 0.04em;
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--paper) 22%, transparent),
-    0 18px 34px -16px color-mix(in srgb, var(--ink) 80%, transparent),
-    0 4px 10px -4px color-mix(in srgb, var(--ink) 40%, transparent);
-}
-.cta:hover:not(:disabled, .quiet) .arr {
-  margin-right: 0;
-  opacity: 1;
-  transform: none;
+  background: color-mix(in srgb, var(--ink) 88%, var(--paper));
 }
 .cta:active:not(:disabled, .quiet) {
-  transform: translateY(0) scale(0.975);
-  box-shadow:
-    inset 0 2px 6px color-mix(in srgb, var(--ink) 50%, transparent),
-    0 1px 2px color-mix(in srgb, var(--ink) 25%, transparent);
+  transform: scale(0.97);
+  transition-duration: 0.08s;
+}
+/* Bloom: an eight-petal pat flower, the house's marigold, in the button. */
+.cta .bloom {
+  flex: none;
+  stroke: none;
+  width: 20px;
+  height: 20px;
+  fill: var(--mari);
+  transition: transform 0.7s var(--ease-out);
+}
+.bloom .core {
+  fill: currentColor;
+}
+.cta:hover:not(:disabled, .quiet) .bloom {
+  transform: rotate(90deg);
+}
+.cta:active:not(:disabled, .quiet) .bloom {
+  transform: rotate(90deg) scale(0.8);
   transition-duration: 0.12s;
+}
+.cta:disabled .bloom {
+  animation: bloom-spin 1.4s linear infinite;
+}
+@keyframes bloom-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .cta:focus-visible {
   outline: 2px solid var(--ink);
@@ -532,13 +550,6 @@ async function logIn() {
   gap: 14px;
   padding: 20px 24px 22px;
 }
-.kick {
-  margin: 0 0 -8px;
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
 h2 {
   margin: 0;
   font-size: 26px;
@@ -648,8 +659,9 @@ h2 {
     animation: none;
   }
   .cta,
-  .cta .arr {
+  .cta .bloom {
     transition: none;
+    animation: none;
   }
 }
 @media (max-width: 560px) {
