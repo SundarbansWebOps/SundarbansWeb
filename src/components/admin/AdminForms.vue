@@ -509,6 +509,58 @@
           </tbody>
         </table>
       </div>
+
+      <!-- PANBS guests: IITM BS students outside the house, kept apart from member responses. -->
+      <section v-if="guests.length" class="guests" aria-labelledby="guests-h">
+        <div class="resp-bar">
+          <h3 id="guests-h" class="adm-kicker">
+            Guests <span class="n">{{ guests.length }}</span>
+          </h3>
+          <button type="button" class="adm-btn ghost small" @click="downloadGuests">
+            Download guests CSV
+          </button>
+        </div>
+        <div class="adm-chips" role="group" aria-label="Filter guests by house">
+          <button
+            v-for="h in guestHouses"
+            :key="h.value"
+            type="button"
+            class="adm-chip"
+            :class="{ on: guestHouse === h.value }"
+            :aria-pressed="guestHouse === h.value"
+            @click="guestHouse = h.value"
+          >
+            {{ h.label }} <span class="n">{{ h.n }}</span>
+          </button>
+        </div>
+        <div class="resp-wrap">
+          <table class="resp">
+            <thead>
+              <tr>
+                <th scope="col" class="who">Guest</th>
+                <th scope="col">House</th>
+                <th scope="col">Submitted</th>
+                <th v-for="f in guestFields" :key="f.key" scope="col">{{ f.label }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="g in shownGuests" :key="g.id">
+                <td class="who">
+                  {{ g.email }}
+                  <small class="member-name">{{ g.full_name }}</small>
+                  <small v-if="g.phone" class="member-name">{{ g.phone }}</small>
+                </td>
+                <td>
+                  {{ g.house }}
+                  <span v-if="g.on_roster" class="adm-badge mari">on roster</span>
+                </td>
+                <td class="when">{{ day(g.submitted_at) }}</td>
+                <td v-for="f in guestFields" :key="f.key">{{ guestAnswer(g, f) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </AdminDialog>
 
     <AdminDialog
@@ -581,6 +633,7 @@ import {
   canManageEvent,
   downloadCsv,
   exportFormResponses,
+  listFormGuests,
   fieldKeyFromLabel,
   formResponsesToCsv,
   getAvailableCohorts,
@@ -672,6 +725,59 @@ const eventBoundLock = computed(
 );
 const dlg = ref(null);
 const responsesFor = ref(null);
+// PANBS guests (spec 007): non-members who registered on the public event page.
+const guests = ref([]);
+const guestHouse = ref('all');
+const ROSTER = '\u0000roster';
+const guestHouses = computed(() => {
+  const n = {};
+  for (const g of guests.value) n[g.house] = (n[g.house] ?? 0) + 1;
+  const roster = guests.value.filter((g) => g.on_roster).length;
+  return [
+    { value: 'all', label: 'All houses', n: guests.value.length },
+    ...(roster ? [{ value: ROSTER, label: 'On Sundarbans roster', n: roster }] : []),
+    ...Object.keys(n)
+      .sort()
+      .map((h) => ({ value: h, label: h, n: n[h] })),
+  ];
+});
+const shownGuests = computed(() =>
+  guestHouse.value === 'all'
+    ? guests.value
+    : guestHouse.value === ROSTER
+      ? guests.value.filter((g) => g.on_roster)
+      : guests.value.filter((g) => g.house === guestHouse.value)
+);
+// Questions from the newest guest row's schema, minus the fixed name/email/phone columns.
+const guestFields = computed(() =>
+  (guests.value.at(-1)?.field_schema ?? []).filter(
+    (f) => !['name', 'email', 'phone'].includes(f.prefill)
+  )
+);
+function guestAnswer(g, f) {
+  const v = g.answers?.[f.key];
+  if (Array.isArray(v)) return v.join('; ') || '–';
+  if (v === true) return 'Yes';
+  if (v === false) return 'No';
+  return v == null || v === '' ? '–' : String(v);
+}
+function downloadGuests() {
+  const columns = [
+    { key: 'email', label: 'Email' },
+    { key: 'full_name', label: 'Name' },
+    { key: 'phone', label: 'Phone' },
+    { key: 'house', label: 'House' },
+    { key: 'roster', label: 'On Sundarbans roster' },
+    { key: 'submitted_at', label: 'Submitted' },
+    ...guestFields.value.map((f) => ({ key: `q:${f.key}`, label: f.label })),
+  ];
+  const rows = shownGuests.value.map((g) => ({
+    ...g,
+    roster: g.on_roster ? 'yes' : 'no',
+    ...Object.fromEntries(guestFields.value.map((f) => [`q:${f.key}`, guestAnswer(g, f)])),
+  }));
+  downloadCsv(`${responsesFor.value.title}-guests.csv`, rows, columns);
+}
 const responses = ref([]);
 const responseFields = ref([]);
 const respError = ref('');
@@ -1181,6 +1287,8 @@ async function openResponses(f) {
   responsesFor.value = f;
   responses.value = [];
   responseFields.value = [];
+  guests.value = [];
+  guestHouse.value = 'all';
   respError.value = '';
   reviewError.value = '';
   refreshNotice.value = '';
@@ -1188,8 +1296,12 @@ async function openResponses(f) {
   sortOrder.value = 'newest';
   respLoading.value = true;
   try {
-    const rows = await exportFormResponses(f.id);
+    const [rows, guestRows] = await Promise.all([
+      exportFormResponses(f.id),
+      listFormGuests(f.id).catch(() => []),
+    ]);
     responses.value = rows;
+    guests.value = guestRows ?? [];
     responseFields.value = formResponsesToCsv(rows).fields;
   } catch (e) {
     respError.value = errorText(e);
@@ -1432,6 +1544,14 @@ function downloadResponses() {
 .mono {
   font-family: var(--mono);
   font-size: 13px;
+}
+.guests {
+  display: grid;
+  gap: 12px;
+  margin-top: 28px;
+}
+.guests h3 .n {
+  color: var(--ink-3);
 }
 .resp-tools {
   display: flex;

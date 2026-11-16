@@ -50,7 +50,8 @@
             <span v-else-if="e.cancelled_at" class="adm-badge verm">cancelled</span>
             <span v-else-if="isLive(e)" class="adm-badge mari">live now</span>
             <span v-if="e.certificates_released_at" class="adm-badge mari">certificates</span>
-            <span v-if="e.is_public && !e.archive" class="adm-badge">public</span>
+            <span v-if="e.panbs" class="adm-badge mari">PANBS</span>
+            <span v-else-if="e.is_public && !e.archive" class="adm-badge">public</span>
             <span v-if="e.entry_mode === 'open'" class="adm-badge">open to all</span>
           </div>
         </div>
@@ -112,7 +113,19 @@
             maxlength="200"
           />
         </label>
-        <label v-if="isSuperAdmin" class="adm-field">
+        <div v-if="canPanbs" class="adm-field wide">
+          <label class="adm-check">
+            <input v-model="form.panbs" type="checkbox" @change="onPanbs" />
+            <span>Type: PANBS (open to every IITM BS student)</span>
+          </label>
+          <small v-if="form.panbs"
+            >House-wide and on the public Events page. Anyone with an IITM student email registers
+            on the event page.<template v-if="!isSuperAdmin">
+              A Super Admin approves it.</template
+            ></small
+          >
+        </div>
+        <label v-if="isSuperAdmin && !form.panbs" class="adm-field">
           <span>Scope</span>
           <AdminSelect v-model="form.scope" :options="SA_SCOPES" @change="onScope" />
         </label>
@@ -137,12 +150,12 @@
             >{{ membersOnlyAudience(lookups, form.community_id) }} see it.</small
           >
         </label>
-        <label v-else-if="isRc && !form.published_at" class="adm-field">
+        <label v-else-if="isRc && !form.published_at && !form.panbs" class="adm-field">
           <span>Scope</span>
           <AdminSelect v-model="form.scope" :options="rcScopes" />
           <small v-if="form.scope === 'house'">A Super Admin approves house-wide events.</small>
         </label>
-        <p v-else-if="!isSuperAdmin" class="adm-note wide">{{ lockedScope }}</p>
+        <p v-else-if="!isSuperAdmin && !form.panbs" class="adm-note wide">{{ lockedScope }}</p>
         <label class="adm-field">
           <span>Starts</span>
           <input
@@ -165,18 +178,18 @@
           <input v-model="form.archive" type="checkbox" />
           <span>Archive (dateless historical record)</span>
         </label>
-        <div class="wide">
+        <div v-if="!form.panbs" class="wide">
           <p class="adm-kicker">Audience</p>
           <AdminCohortSelect v-if="cohorts" v-model="form.audience_cohorts" :cohorts="cohorts" />
         </div>
-        <div v-if="!form.archive && !membersOnlyEvent" class="adm-field wide">
+        <div v-if="!form.archive && !membersOnlyEvent && !form.panbs" class="adm-field wide">
           <label class="adm-check">
             <input v-model="form.is_public" type="checkbox" />
             <span>Public: also list it on the public Events page</span>
           </label>
           <small>Otherwise only its audience sees it in the Lounge until it ends.</small>
         </div>
-        <label class="adm-field wide">
+        <label v-if="!form.panbs" class="adm-field wide">
           <span>Registration</span>
           <AdminSelect v-model="form.entry_mode" :options="ENTRY_MODES" />
           <small v-if="form.entry_mode === 'open'">
@@ -756,6 +769,7 @@ async function edit(e) {
       scope: e.community_id ? 'community' : e.region_id ? 'region' : 'house',
       archive: !!e.archive,
       is_public: !!e.is_public,
+      panbs: !!e.panbs,
       entry_mode: e.entry_mode === 'open' ? 'open' : 'register',
     };
     boundForm.value = boundFormForEvent(await listForms().catch(() => []), e.id);
@@ -771,6 +785,7 @@ async function edit(e) {
       certificate_template_url: '',
       archive: false,
       is_public: false,
+      panbs: false,
       gmail_link: '',
       registration_link: '',
       ...defaultScope(),
@@ -791,7 +806,37 @@ function onScope() {
   }
 }
 
+// PANBS is only for house-wide events: a Super Admin, or an RC drafting one for approval.
+const canPanbs = computed(
+  () => !form.value?.archive && (isSuperAdmin.value || (isRc.value && !form.value?.published_at))
+);
+
+// PANBS events are house-wide, public and for every cohort (the database enforces it).
+function onPanbs() {
+  if (!form.value.panbs) return;
+  Object.assign(form.value, {
+    scope: 'house',
+    region_id: null,
+    community_id: null,
+    audience_cohorts: [],
+    is_public: true,
+    entry_mode: 'register',
+  });
+}
+
 function payload() {
+  if (form.value.panbs) {
+    return {
+      ...form.value,
+      starts_at: fromLocal(form.value.starts),
+      ends_at: fromLocal(form.value.ends),
+      scope: 'house',
+      region_id: null,
+      community_id: null,
+      audience_cohorts: [],
+      is_public: true,
+    };
+  }
   const rcHouse = isRc.value && !isSuperAdmin.value && form.value.scope === 'house';
   const scope = isSuperAdmin.value || rcHouse ? form.value : { ...form.value, ...defaultScope() };
   const communityId = scope.scope === 'community' ? scope.community_id : null;
