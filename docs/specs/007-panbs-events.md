@@ -73,4 +73,10 @@ A guest who picks Sundarbans but is not on the roster is kept as picked; the adm
   registered" or "Already registered" with one line: join from this page when it starts. The sheet
   button turns into a quiet registered row. Copy stays short; the email hint is "Use your IITM
   email only."
+- The browser remembers each PANBS event it registered for (localStorage key
+  `sundarbans-panbs-registered`, a list of event ids), so after a refresh the sheet still says
+  "Already registered" instead of Register. It is a convenience only: the server's one-per-email
+  rule stays the authority, and cleared or blocked storage just shows Register again. Inside the
+  join window everyone sees Join now, registered or not.
+- Live events carry no badge on the poster; the "Live now" section heading already says so.
 - Public copy calls the members' area the **Members Lounge**.

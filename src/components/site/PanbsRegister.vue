@@ -84,7 +84,7 @@
         <figure class="banner" :class="`w-${e.wing}`" aria-hidden="true">
           <img v-if="e.image" :src="img.card(e.image)" alt="" />
           <img v-else-if="POSTER_ART[e.wing]" class="fig" :src="POSTER_ART[e.wing]" alt="" />
-          <span class="tag">PANBS</span>
+          <span class="tag mono">PANBS</span>
         </figure>
         <button type="button" class="x" title="Close" @click="dlg.close()">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
@@ -241,6 +241,25 @@ const STUDENT_EMAIL = /^[a-z0-9._%+-]+@([a-z0-9-]+\.)*study\.iitm\.ac\.in$/i;
 // Name, email and phone come from the fixed fields; the server copies them into prefill fields.
 const FIXED = new Set(['name', 'email', 'phone']);
 
+// This browser remembers which PANBS events it registered for, so a refresh still says
+// "Already registered" (no account to look it up by). The server's one-per-email rule stays the
+// authority; storage can be blocked or cleared, so every access is guarded.
+const SAVED = 'sundarbans-panbs-registered';
+function savedIds() {
+  try {
+    return JSON.parse(localStorage.getItem(SAVED)) || [];
+  } catch {
+    return [];
+  }
+}
+function remember(id) {
+  try {
+    localStorage.setItem(SAVED, JSON.stringify([...new Set([...savedIds(), id])]));
+  } catch {
+    /* private window or storage off: the server still blocks a second registration */
+  }
+}
+
 const state = ref('loading'); // loading | join | wait | ready | sending | done | closed
 const dlg = ref(null);
 const sent = ref(false); // the pop-up shows the result until it closes
@@ -275,6 +294,11 @@ watch(
       }
       if (stage === 'live') {
         state.value = 'wait';
+        return;
+      }
+      if (savedIds().includes(id)) {
+        result.value = null;
+        state.value = 'done';
         return;
       }
       const f = props.e.registers ? await getPanbsForm(id) : null;
@@ -343,10 +367,12 @@ async function send() {
       phone: who.phone ? phoneOut(who.phone) : null,
       answers: { ...answers },
     });
+    remember(props.e.dbId);
     sent.value = true;
     state.value = 'done';
   } catch (err) {
     if (err?.code === 'PT409') {
+      remember(props.e.dbId);
       result.value = null;
       sent.value = true;
       state.value = 'done';
@@ -561,15 +587,17 @@ async function logIn() {
 }
 .banner .tag {
   position: absolute;
-  left: 20px;
-  bottom: 12px;
-  padding: 3px 9px;
-  border-radius: 99px;
+  left: 22px;
+  bottom: 14px;
+  padding: 3px 7px 2px 8px;
+  border: 1px dotted color-mix(in srgb, var(--on-mari) 50%, transparent);
+  border-radius: 2px;
+  box-shadow: 0 0 0 2px var(--mari);
   background: var(--mari);
   color: var(--on-mari);
-  font-size: 11px;
-  font-weight: 750;
-  letter-spacing: 0.08em;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
 }
 .x {
   position: absolute;

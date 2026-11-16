@@ -17,7 +17,7 @@
           tabindex="-1"
         >
           <header class="top">
-            <span v-if="e.panbs" class="panbs">PANBS · Open to all IITM BS</span>
+            <span v-if="e.panbs" class="panbs mono">PANBS · Open to all IITM BS</span>
             <span v-else class="wing"><i />{{ WINGS[e.wing].label }}</span>
             <span class="pos mono">{{ idx + 1 }} / {{ list.length }}</span>
             <span class="grow" />
@@ -332,14 +332,18 @@ function leave(el, done) {
   font-size: 13px;
   font-weight: 650;
 }
-/* PANBS: a marigold pill instead of the wing, so open-to-all events read differently. */
+/* PANBS: a marigold pat plate (band, dotted inner line) instead of the wing chip. */
 .panbs {
-  padding: 5px 12px;
-  border-radius: 99px;
+  padding: 5px 10px 4px;
+  border: 1px dotted color-mix(in srgb, var(--on-mari) 50%, transparent);
+  border-radius: 3px;
+  box-shadow: 0 0 0 2.5px var(--mari);
   background: var(--mari);
   color: var(--on-mari);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 .wing i {

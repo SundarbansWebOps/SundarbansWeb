@@ -30,14 +30,14 @@
       </template>
       <TypePoster v-else :e="e" />
       <span v-if="e.panbs && e.stage !== 'past'" class="ribbon">Open to all IITM BS</span>
-      <span v-if="e.stage === 'live'" class="live-pill"><i aria-hidden="true" />Live now</span>
-      <span v-else-if="e.at && e.image" class="stamp mono">
+      <!-- Live events sit under the "Live now" heading, so the poster carries no live badge. -->
+      <span v-if="e.stage !== 'live' && e.at && e.image" class="stamp mono">
         <b>{{ e.range || e.d || MONTH[e.m] }}</b>
         <small>{{ e.d ? MONTH[e.m] : e.y }}</small>
       </span>
     </span>
     <span class="meta">
-      <b v-if="e.panbs" class="tag">PANBS</b><i v-else class="dot" />{{ e.type }}
+      <b v-if="e.panbs" class="tag mono">PANBS</b><i v-else class="dot" />{{ e.type }}
       <template v-if="e.online"> · Online</template>
     </span>
     <strong class="title">{{ e.title }}</strong>
@@ -161,42 +161,6 @@ const loaded = ref(false);
   font-weight: 600;
   letter-spacing: 0.14em;
 }
-/* Live: a solid pill in the top-right corner, clear of the painted poster's title. */
-.live-pill {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 11px 5px 9px;
-  border-radius: 99px;
-  border: 1.5px solid var(--verm);
-  background: var(--card);
-  color: var(--verm);
-  font-size: 12px;
-  font-weight: 750;
-  letter-spacing: 0.02em;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--verm) 40%, transparent);
-}
-.live-pill i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-  animation: live-beat 1.6s ease-in-out infinite;
-}
-@keyframes live-beat {
-  50% {
-    opacity: 0.3;
-    transform: scale(0.7);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .live-pill i {
-    animation: none;
-  }
-}
 .meta {
   display: flex;
   align-items: center;
@@ -216,7 +180,10 @@ const loaded = ref(false);
   right: 0;
   bottom: 12px;
   padding: 5px 10px 5px 12px;
+  border: 1px dotted color-mix(in srgb, var(--on-mari) 45%, transparent);
+  border-right: 0;
   border-radius: 99px 0 0 99px;
+  box-shadow: 0 0 0 2px var(--mari);
   background: var(--mari);
   color: var(--on-mari);
   font-size: 11.5px;
@@ -224,13 +191,16 @@ const loaded = ref(false);
   letter-spacing: 0.01em;
 }
 .tag {
-  padding: 1px 7px;
-  border-radius: 99px;
+  margin-left: 2px;
+  padding: 2px 6px 1px 7px;
+  border: 1px dotted color-mix(in srgb, var(--on-mari) 50%, transparent);
+  border-radius: 2px;
+  box-shadow: 0 0 0 2px var(--mari);
   background: var(--mari);
   color: var(--on-mari);
-  font-size: 10.5px;
-  font-weight: 750;
-  letter-spacing: 0.06em;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
 }
 .dot {
   width: 8px;

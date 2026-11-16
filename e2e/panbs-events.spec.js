@@ -92,6 +92,12 @@ test('a signed-out student registers for a PANBS event on the event page', async
     p_phone: '+919876543210',
     p_answers: { level: 'Degree' },
   });
+
+  // This browser remembers the registration, so a refresh (which reopens the sheet from the URL)
+  // still says registered.
+  await page.reload();
+  await expect(page.getByRole('dialog').getByRole('status')).toContainText('Already registered');
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Register' })).toHaveCount(0);
 });
 
 test('a Super Admin makes an event PANBS', async ({ page }) => {
@@ -118,6 +124,11 @@ test('a Super Admin makes an event PANBS', async ({ page }) => {
 });
 
 test('a live PANBS event shows Join instead of the form', async ({ page }) => {
+  // Registered from this browser earlier: Join still shows, for registered and unregistered alike.
+  await page.addInitScript(
+    (id) => localStorage.setItem('sundarbans-panbs-registered', JSON.stringify([id])),
+    EVENT_ID
+  );
   await mockSupabase(page, {
     signedIn: false,
     data: {
@@ -128,7 +139,10 @@ test('a live PANBS event shows Join instead of the form', async ({ page }) => {
   });
   await page.goto('/#/events');
   const liveSection = page.getByRole('region', { name: /Live now/ });
-  await expect(liveSection.getByText('Live now', { exact: true })).toBeVisible();
+  // The section heading says it is live; the poster itself carries no second Live badge.
+  await expect(liveSection.getByRole('button', { name: /Paradox quiz/ })).not.toContainText(
+    'Live now'
+  );
   await liveSection.getByText('Paradox quiz').first().click();
 
   const sheet = page.getByRole('dialog');
