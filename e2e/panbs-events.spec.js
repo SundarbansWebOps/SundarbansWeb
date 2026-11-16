@@ -43,6 +43,7 @@ test('a signed-out student registers for a PANBS event on the event page', async
     signedIn: false,
     data: {
       list_public_events: [PANBS_EVENT],
+      get_panbs_join_link: null,
       get_panbs_form: FORM,
       submit_panbs_registration: { kind: 'guest', house: 'Nallamala' },
     },
@@ -54,7 +55,9 @@ test('a signed-out student registers for a PANBS event on the event page', async
 
   const sheet = page.getByRole('dialog');
   await expect(sheet.getByText('PANBS · Open to all IITM BS')).toBeVisible();
-  await expect(sheet.getByRole('button', { name: /Log in to Launch to join/ })).toHaveCount(0);
+  await expect(
+    sheet.getByRole('button', { name: /Log in to the Members Lounge to join/ })
+  ).toHaveCount(0);
   // The name-prefill question is not asked twice.
   await expect(sheet.getByLabel('Name', { exact: true })).toHaveCount(1);
 
@@ -105,4 +108,54 @@ test('a Super Admin makes an event PANBS', async ({ page }) => {
     community_id: null,
     audience_cohorts: [],
   });
+});
+
+test('a live PANBS event shows Join instead of the form', async ({ page }) => {
+  await mockSupabase(page, {
+    signedIn: false,
+    data: {
+      list_public_events: [{ ...PANBS_EVENT, starts_at: soon(-0.05), stage: 'live' }],
+      get_panbs_join_link: 'https://meet.google.com/abc-defg-hij',
+      get_panbs_form: FORM,
+    },
+  });
+  await page.goto('/#/events');
+  const liveSection = page.getByRole('region', { name: /Live now/ });
+  await expect(liveSection.getByText('Live now', { exact: true })).toBeVisible();
+  await liveSection.getByText('Paradox quiz').first().click();
+
+  const sheet = page.getByRole('dialog');
+  const join = sheet.getByRole('link', { name: 'Join now' });
+  await expect(join).toHaveAttribute('href', 'https://meet.google.com/abc-defg-hij');
+  await expect(sheet.getByRole('button', { name: 'Register' })).toHaveCount(0);
+});
+
+test('registering twice says already registered and points to Join', async ({ page }) => {
+  await mockSupabase(page, {
+    signedIn: false,
+    data: { list_public_events: [PANBS_EVENT], get_panbs_join_link: null, get_panbs_form: FORM },
+  });
+  // Registered after the mock, so this route wins for the duplicate-registration error.
+  await page.route('**/rest/v1/rpc/submit_panbs_registration', (route) =>
+    route.fulfill({
+      status: 409,
+      headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' },
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'PT409', message: 'Already registered' }),
+    })
+  );
+  await page.goto('/#/events');
+  await page
+    .getByRole('region', { name: /Coming up/ })
+    .getByText('Paradox quiz')
+    .first()
+    .click();
+  const sheet = page.getByRole('dialog');
+  await sheet.getByLabel('Name', { exact: true }).fill('Guest One');
+  await sheet.getByLabel('Student email').fill('21f1000001@ds.study.iitm.ac.in');
+  await sheet.getByLabel('Your house').selectOption('Nallamala');
+  await sheet.getByLabel('Level').selectOption('Degree');
+  await sheet.getByRole('button', { name: 'Register' }).click();
+  await expect(sheet.getByRole('status')).toContainText('already registered');
+  await expect(sheet.getByRole('status')).toContainText('Join button appears here');
 });

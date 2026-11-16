@@ -311,9 +311,11 @@
         </div>
         <label class="adm-field wide">
           <span>{{
-            form.entry_mode === 'open'
-              ? "Members' meeting link"
-              : "Members' meeting link (optional)"
+            form.panbs
+              ? 'Meeting link'
+              : form.entry_mode === 'open'
+                ? "Members' meeting link"
+                : "Members' meeting link (optional)"
           }}</span>
           <input
             v-model.trim="form.gmail_link"
@@ -321,7 +323,11 @@
             type="url"
             placeholder="https://meet.google.com/…"
           />
-          <small v-if="form.entry_mode === 'open'">
+          <small v-if="form.panbs">
+            PANBS: everyone sees a Join button on the public event page from 15 minutes before the
+            start until the end. No registration needed to join.
+          </small>
+          <small v-else-if="form.entry_mode === 'open'">
             Members see this in the Lounge when the session goes live. Public visitors do not.
           </small>
         </label>

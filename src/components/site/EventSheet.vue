@@ -105,8 +105,10 @@
                 <p v-if="e.desc" class="desc">{{ e.desc }}</p>
 
                 <PanbsRegister
-                  v-if="e.panbs && e.registers && e.stage !== 'past'"
+                  v-if="e.panbs && e.dbId && e.stage !== 'past'"
                   :event-id="e.dbId"
+                  :live="e.stage === 'live'"
+                  :registers="e.registers"
                 />
                 <template v-else-if="e.stage && e.stage !== 'past'">
                   <button
@@ -118,7 +120,11 @@
                   >
                     <span>
                       <strong>{{ e.stage === 'live' ? 'Happening now' : 'Coming up' }}</strong>
-                      {{ signedIn ? 'Open in Launch to join' : 'Log in to Launch to join' }}
+                      {{
+                        signedIn
+                          ? 'Open the Members Lounge to join'
+                          : 'Log in to the Members Lounge to join'
+                      }}
                     </span>
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <path d="M5 12h14M13 6l6 6-6 6" />
@@ -175,7 +181,7 @@ function launchPath(stage) {
   return stage === 'live' ? '/lounge?room=live' : '/lounge?view=events';
 }
 
-// Live and upcoming join from Launch. Meet links stay off this public sheet.
+// Live and upcoming house events join from the Members Lounge. Meet links stay off this public sheet.
 function toLaunch() {
   const next = launchPath(e.value?.stage);
   closeEvent(async () => {

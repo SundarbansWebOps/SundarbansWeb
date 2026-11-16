@@ -1,20 +1,40 @@
 <!--
   PANBS registration on the public event sheet (spec 007). Anyone with an IITM student email
   registers here without signing in; the server files them as a member or a guest by email.
-  Signed-in members get a link to the same form in Launch instead.
+  Signed-in members get a link to the same form in the Members Lounge instead. From 15 minutes
+  before the start until the end, everyone gets a Join button instead of the form.
 -->
 <template>
   <section class="reg" aria-labelledby="reg-h">
-    <p v-if="state === 'loading'" class="note">Loading the registration form…</p>
+    <p v-if="state === 'loading'" class="note">Loading…</p>
+
+    <template v-else-if="state === 'join'">
+      <h3 id="reg-h">{{ live ? 'Happening now' : 'Starting soon' }}</h3>
+      <a class="go join" :href="joinLink" target="_blank" rel="noopener noreferrer">
+        <span><i class="beat" aria-hidden="true" />Join now</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+      </a>
+      <p class="note">Open to every IITM BS student. No registration needed to join.</p>
+    </template>
+
+    <p v-else-if="state === 'wait'" class="note">
+      <strong>Happening now.</strong> The joining link isn’t up yet. Check back in a minute.
+    </p>
     <p v-else-if="state === 'closed'" class="note">Registration for this event is closed.</p>
 
     <template v-else-if="state === 'done'">
       <div class="done" role="status">
         <strong id="reg-h">You’re registered</strong>
         <span v-if="result?.kind === 'member'">
-          It’s filed with your Sundarbans account. You’ll see it in Launch when you log in.
+          It’s filed with your Sundarbans account. You’ll see it in the Members Lounge when you log
+          in.
         </span>
-        <span v-else>We’ve got your registration for {{ form.title }}.</span>
+        <span v-else-if="result?.kind">We’ve got your registration for {{ form.title }}.</span>
+        <span v-else>This email is already registered for {{ form.title }}.</span>
+        <span
+          >Come back to this page when it starts: the Join button appears here 15 minutes
+          before.</span
+        >
       </div>
     </template>
 
@@ -22,7 +42,7 @@
       <template v-if="signedIn">
         <h3 id="reg-h">Register</h3>
         <RouterLink class="go" :to="`/lounge/forms/${form.id}`" @click="closeEvent()">
-          Open the form in Launch
+          Open the form in the Members Lounge
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
         </RouterLink>
       </template>
@@ -32,7 +52,7 @@
         <p v-if="form.description" class="lede">{{ form.description }}</p>
         <p class="lede">
           Sundarbans member?
-          <a href="#" @click.prevent="logIn">Log in to register from Launch</a>.
+          <a href="#" @click.prevent="logIn">Log in to register from the Members Lounge</a>.
         </p>
 
         <div class="grid">
@@ -147,16 +167,21 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { closeEvent } from '../../lib/events.js';
 import { signedIn, signInWithGoogle } from '../../lib/auth.js';
-import { getPanbsForm, submitPanbsRegistration } from '../../lib/lounge.js';
+import { getPanbsForm, getPanbsJoinLink, submitPanbsRegistration } from '../../lib/lounge.js';
 
-const props = defineProps({ eventId: { type: String, required: true } });
+const props = defineProps({
+  eventId: { type: String, required: true },
+  live: { type: Boolean, default: false },
+  registers: { type: Boolean, default: true },
+});
 
 // Mirrors the server rule in submit_panbs_registration; the server stays the authority.
 const STUDENT_EMAIL = /^[a-z0-9._%+-]+@([a-z0-9-]+\.)*study\.iitm\.ac\.in$/i;
 // Name, email and phone come from the fixed fields; the server copies them into prefill fields.
 const FIXED = new Set(['name', 'email', 'phone']);
 
-const state = ref('loading'); // loading | ready | sending | done | closed
+const state = ref('loading'); // loading | join | wait | ready | sending | done | closed
+const joinLink = ref('');
 const form = ref(null);
 const result = ref(null);
 const error = ref('');
@@ -169,13 +194,25 @@ const asked = computed(() => (form.value?.fields || []).filter((f) => !FIXED.has
 const emailBad = computed(() => tried.value && !STUDENT_EMAIL.test(who.email));
 
 watch(
-  () => props.eventId,
-  async (id) => {
+  () => [props.eventId, props.live],
+  async ([id]) => {
     state.value = 'loading';
     error.value = '';
     tried.value = false;
     try {
-      const f = await getPanbsForm(id);
+      // The server releases the link only inside the join window, so it decides Join vs form.
+      const link = await getPanbsJoinLink(id).catch(() => null);
+      if (id !== props.eventId) return;
+      if (link) {
+        joinLink.value = link;
+        state.value = 'join';
+        return;
+      }
+      if (props.live) {
+        state.value = 'wait';
+        return;
+      }
+      const f = props.registers ? await getPanbsForm(id) : null;
       if (id !== props.eventId) return;
       form.value = f;
       for (const k of Object.keys(answers)) delete answers[k];
@@ -232,8 +269,13 @@ async function send() {
     });
     state.value = 'done';
   } catch (e) {
+    if (e?.code === 'PT409') {
+      result.value = null;
+      state.value = 'done';
+      return;
+    }
     // Database rules raise readable messages (closed, already registered, bad email/phone).
-    const known = ['22023', '42501', 'PT409'].includes(e?.code);
+    const known = ['22023', '42501'].includes(e?.code);
     error.value = known && e.message ? e.message : 'Could not register. Try again in a moment.';
     state.value = 'ready';
   }
@@ -389,6 +431,36 @@ form {
   gap: 4px;
   font-size: 14.5px;
   color: var(--ink-2);
+}
+.join {
+  padding: 14px 18px;
+  font-size: 17px;
+}
+.join span {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.beat {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--verm);
+  animation: beat 1.6s ease-in-out infinite;
+}
+@keyframes beat {
+  50% {
+    opacity: 0.3;
+    transform: scale(0.7);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .beat {
+    animation: none;
+  }
+}
+.note strong {
+  color: var(--ink);
 }
 .done strong {
   font-size: 19px;

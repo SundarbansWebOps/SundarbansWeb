@@ -83,6 +83,7 @@ select is(public.get_panbs_form('c2000000-0000-4000-8000-0000000000e1')->>'id',
   'c2000000-0000-4000-8000-0000000000f1', 'visitor reads the PANBS form');
 select is(public.get_panbs_form('c2000000-0000-4000-8000-0000000000e2'), null, 'no public form for a house event');
 select is(public.get_panbs_form((select id from draft)), null, 'no public form for an unpublished draft');
+select is(public.get_panbs_join_link('c2000000-0000-4000-8000-0000000000e1'), null, 'no join link a day before the start');
 
 select throws_ok($$select public.submit_panbs_registration('c2000000-0000-4000-8000-0000000000f1',
   'someone@gmail.com','Someone','Gir',null,'{"level":"Degree"}')$$, '22023', null, 'personal email refused');
@@ -129,6 +130,15 @@ set local request.jwt.claims = '{"sub":"c2000000-0000-4000-8000-000000000003","r
 select throws_ok($$select public.list_form_guests('c2000000-0000-4000-8000-0000000000f1')$$, '42501', null, 'a student cannot list guests');
 select is((select (x->>'submitted')::boolean from jsonb_array_elements(public.list_lounge_forms()) x
   where x->>'id' = 'c2000000-0000-4000-8000-0000000000f1'), true, 'the member sees the form as submitted in the Lounge');
+reset role;
+
+-- Inside the join window the link is public for PANBS, never for a house event.
+update public.events set gmail_link = 'https://meet.google.com/aaa-bbbb-ccc', starts_at = now() - interval '5 minutes'
+ where id in ('c2000000-0000-4000-8000-0000000000e1', 'c2000000-0000-4000-8000-0000000000e2');
+set local role anon;
+set local request.jwt.claims = '{"role":"anon"}';
+select is(public.get_panbs_join_link('c2000000-0000-4000-8000-0000000000e1'), 'https://meet.google.com/aaa-bbbb-ccc', 'visitor gets the live PANBS link');
+select is(public.get_panbs_join_link('c2000000-0000-4000-8000-0000000000e2'), null, 'house event link stays private');
 reset role;
 
 -- Hard delete removes guest rows too.

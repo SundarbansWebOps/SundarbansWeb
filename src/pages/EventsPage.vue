@@ -1,6 +1,6 @@
 <!--
   Events: live and upcoming Public events at the top, then the archive
-  (swell chart → month-by-month log). Joining is in Launch. Meetups live on House.
+  (swell chart → month-by-month log). Joining is in the Members Lounge. Meetups live on House.
 -->
 <template>
   <main id="main-content" class="wrap" tabindex="-1">
@@ -215,8 +215,9 @@ const sub = computed(() => {
   const since = first.value
     ? `Everything the house has run since ${MONTH[first.value.m]} ${first.value.y}.`
     : 'Past events the house has published.';
-  if (happening.value.length) return `${since} Log in to Launch to join what’s live or coming up.`;
-  return `${since} More upcoming events are announced to members in Launch.`;
+  if (happening.value.length)
+    return `${since} Log in to the Members Lounge to join what’s live or coming up.`;
+  return `${since} More upcoming events are announced to members in the Members Lounge.`;
 });
 // The swell chart shows last calendar year and this year up to today; the log below keeps the full archive.
 const chartEvents = computed(() => {

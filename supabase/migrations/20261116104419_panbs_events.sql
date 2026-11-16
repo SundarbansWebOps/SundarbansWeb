@@ -89,6 +89,20 @@ $$;
 revoke execute on function public.get_panbs_form(uuid) from public;
 grant execute on function public.get_panbs_form(uuid) to anon, authenticated, service_role;
 
+-- A live PANBS event is joined straight from the public event page, no sign-in or registration.
+-- The meeting link is released from 15 minutes before the start until the end, and never earlier.
+create function public.get_panbs_join_link(p_event_id uuid) returns text
+language sql stable security definer set search_path = '' as $$
+  select nullif(btrim(e.gmail_link), '')
+  from public.events e
+  where e.id = p_event_id and e.panbs and e.is_public
+    and e.published_at is not null and e.published_at <= now()
+    and e.deleted_at is null and e.cancelled_at is null and not e.archive
+    and now() >= e.starts_at - interval '15 minutes' and now() < e.ends_at;
+$$;
+revoke execute on function public.get_panbs_join_link(uuid) from public;
+grant execute on function public.get_panbs_join_link(uuid) to anon, authenticated, service_role;
+
 create function public.submit_panbs_registration(p_form_id uuid, p_email text, p_name text,
                                                  p_house text, p_phone text, p_answers jsonb)
 returns jsonb

@@ -30,10 +30,7 @@
       </template>
       <TypePoster v-else :e="e" />
       <span v-if="e.panbs && e.stage !== 'past'" class="ribbon">Open to all IITM BS</span>
-      <span v-if="e.stage === 'live'" class="stamp live-stamp">
-        <b>Live</b>
-        <small>now</small>
-      </span>
+      <span v-if="e.stage === 'live'" class="live-pill"><i aria-hidden="true" />Live now</span>
       <span v-else-if="e.at && e.image" class="stamp mono">
         <b>{{ e.range || e.d || MONTH[e.m] }}</b>
         <small>{{ e.d ? MONTH[e.m] : e.y }}</small>
@@ -164,9 +161,41 @@ const loaded = ref(false);
   font-weight: 600;
   letter-spacing: 0.14em;
 }
-.live-stamp {
-  border-color: var(--verm);
+/* Live: a solid pill in the top-right corner, clear of the painted poster's title. */
+.live-pill {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px 5px 9px;
+  border-radius: 99px;
+  border: 1.5px solid var(--verm);
+  background: var(--card);
   color: var(--verm);
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--verm) 40%, transparent);
+}
+.live-pill i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: live-beat 1.6s ease-in-out infinite;
+}
+@keyframes live-beat {
+  50% {
+    opacity: 0.3;
+    transform: scale(0.7);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-pill i {
+    animation: none;
+  }
 }
 .meta {
   display: flex;

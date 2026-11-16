@@ -67,6 +67,7 @@ export const listPublicPastEvents = () => rpc('list_public_past_events');
 export const listPublicEvents = () => rpc('list_public_events').catch(() => listPublicPastEvents());
 // PANBS: public registration for events open to all IITM BS (spec 007). Callable signed out.
 export const getPanbsForm = (eventId) => rpc('get_panbs_form', { p_event_id: eventId });
+export const getPanbsJoinLink = (eventId) => rpc('get_panbs_join_link', { p_event_id: eventId });
 export const submitPanbsRegistration = ({
   formId,
   email,
