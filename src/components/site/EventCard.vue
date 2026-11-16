@@ -7,7 +7,7 @@
   <button
     type="button"
     class="card"
-    :class="[`w-${e.wing}`, { hot: ev.hover === e.id }]"
+    :class="[`w-${e.wing}`, { hot: ev.hover === e.id, panbs: e.panbs }]"
     :style="{ '--i': i }"
     @click="$emit('open', e.id, $event)"
     @mouseenter="ev.hover = e.id"
@@ -29,6 +29,7 @@
         />
       </template>
       <TypePoster v-else :e="e" />
+      <span v-if="e.panbs && e.stage !== 'past'" class="ribbon">Open to all IITM BS</span>
       <span v-if="e.stage === 'live'" class="stamp live-stamp">
         <b>Live</b>
         <small>now</small>
@@ -39,7 +40,7 @@
       </span>
     </span>
     <span class="meta">
-      <i class="dot" />{{ e.type }}
+      <b v-if="e.panbs" class="tag">PANBS</b><i v-else class="dot" />{{ e.type }}
       <template v-if="e.online"> · Online</template>
     </span>
     <strong class="title">{{ e.title }}</strong>
@@ -174,6 +175,33 @@ const loaded = ref(false);
   font-size: 12.5px;
   font-weight: 550;
   color: var(--ink-2);
+}
+/* PANBS: marigold ring, ribbon and tag mark events open to every IITM BS student. */
+.card.panbs .poster {
+  box-shadow:
+    0 0 0 2.5px var(--mari),
+    var(--shadow);
+}
+.ribbon {
+  position: absolute;
+  right: 0;
+  bottom: 12px;
+  padding: 5px 10px 5px 12px;
+  border-radius: 99px 0 0 99px;
+  background: var(--mari);
+  color: var(--on-mari);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.tag {
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: var(--mari);
+  color: var(--on-mari);
+  font-size: 10.5px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
 }
 .dot {
   width: 8px;

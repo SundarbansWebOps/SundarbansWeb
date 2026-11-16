@@ -124,6 +124,9 @@ export function fromPublicRow(row) {
     // 'past' | 'live' | 'upcoming' (list_public_events); snapshot rows are all past.
     stage: row.stage ?? 'past',
     link: row.registration_link ?? null,
+    // PANBS: open to all IITM BS; registers = an open form takes public registrations.
+    panbs: !!row.panbs,
+    registers: !!row.registers,
     ...when,
     online: /online/i.test(`${dateText} ${row.location ?? ''}`),
     at:

@@ -17,7 +17,8 @@
           tabindex="-1"
         >
           <header class="top">
-            <span class="wing"><i />{{ WINGS[e.wing].label }}</span>
+            <span v-if="e.panbs" class="panbs">PANBS · Open to all IITM BS</span>
+            <span v-else class="wing"><i />{{ WINGS[e.wing].label }}</span>
             <span class="pos mono">{{ idx + 1 }} / {{ list.length }}</span>
             <span class="grow" />
             <button
@@ -103,7 +104,11 @@
 
                 <p v-if="e.desc" class="desc">{{ e.desc }}</p>
 
-                <template v-if="e.stage && e.stage !== 'past'">
+                <PanbsRegister
+                  v-if="e.panbs && e.registers && e.stage !== 'past'"
+                  :event-id="e.dbId"
+                />
+                <template v-else-if="e.stage && e.stage !== 'past'">
                   <button
                     type="button"
                     class="verify"
@@ -157,6 +162,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import TypePoster from './TypePoster.vue';
+import PanbsRegister from './PanbsRegister.vue';
 import { WINGS, byId, closeEvent, ev, fullDate, img, openEvent } from '../../lib/events.js';
 import { signedIn, signInWithGoogle } from '../../lib/auth.js';
 import { nav } from '../../lib/store.js';
@@ -321,6 +327,16 @@ function leave(el, done) {
   color: var(--w);
   font-size: 13px;
   font-weight: 650;
+}
+/* PANBS: a marigold pill instead of the wing, so open-to-all events read differently. */
+.panbs {
+  padding: 5px 12px;
+  border-radius: 99px;
+  background: var(--mari);
+  color: var(--on-mari);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 .wing i {
   width: 8px;
