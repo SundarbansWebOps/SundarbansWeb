@@ -59,3 +59,14 @@ A guest who picks Sundarbans but is not on the roster is kept as picked; the adm
   through `list_form_guests(form_id)` for whoever manages the form.
 - `get_panbs_form(event_id)` (anon): the open form's title, description and fields.
 - `list_public_events()` adds `panbs` and `registers` (an open form accepts registrations).
+
+## Joining a live PANBS event
+
+- From 15 minutes before `starts_at` until `ends_at`, the public event sheet shows **Join now** to
+  everyone (signed in or not, registered or not). `get_panbs_join_link(event_id)` (anon) returns the
+  event's meeting link only inside that window, and only for a published, public PANBS event.
+  House events never expose their link publicly.
+- Outside the window the sheet shows the registration form. After registering, or when the email is
+  already registered (PT409), it says the Join button appears on the same page 15 minutes before
+  the start.
+- Public copy calls the members' area the **Members Lounge**.
