@@ -143,11 +143,13 @@ begin
   -- Nobody proves they own the email here, so a public registration never writes into a member's
   -- account: everyone is a guest row, and the admin list marks which guests are members. The reply
   -- is the same for every email, so the form cannot be used to probe who is a member or rostered.
-  v_on_roster := exists (select 1 from public.member_roster where lower(email) = v_email);
-  if v_on_roster then v_house := 'Sundarbans';
-  elsif not (v_house = any (private.iitm_houses())) then
+  -- The house is checked for everyone before the roster lookup, so no reply depends on the roster.
+  if not (v_house = any (private.iitm_houses())) then
     raise exception 'Choose your house' using errcode='22023';
   end if;
+  -- Roster and member emails are stored lower-case (constraints), so plain equality uses the index.
+  v_on_roster := exists (select 1 from public.member_roster where email = v_email);
+  if v_on_roster then v_house := 'Sundarbans'; end if;
   -- A ceiling against scripted floods: no house event comes near this many sign-ups.
   if (select count(*) from public.form_guest_responses where form_id = f.id) >= 5000 then
     raise exception 'Registration for this event is closed' using errcode='42501';
@@ -174,7 +176,10 @@ begin
   return coalesce((select jsonb_agg(jsonb_build_object(
       'id', g.id, 'email', g.email, 'full_name', g.full_name, 'phone', g.phone, 'house', g.house,
       'on_roster', g.on_roster,
-      'is_member', exists (select 1 from public.members m where lower(m.email) = g.email and m.deleted_at is null),
+      'is_member', exists (select 1 from public.members m where m.email = g.email and m.deleted_at is null),
+      -- The member also registered in the Lounge, so they appear in the member responses too.
+      'in_lounge', exists (select 1 from public.members m join public.form_responses r
+                             on r.member_id = m.id and r.form_id = g.form_id where m.email = g.email),
       'answers', g.answers, 'field_schema', g.field_schema,
       'submitted_at', g.submitted_at) order by g.submitted_at, g.id)
     from public.form_guest_responses g where g.form_id = p_form_id), '[]');

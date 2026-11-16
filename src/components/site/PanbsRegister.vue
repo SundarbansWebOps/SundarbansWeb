@@ -307,8 +307,13 @@ watch(
         return;
       }
       // No link yet: registration stays open (also for a live event with no meeting link set).
-      const wait = props.e.at ? props.e.at.getTime() - JOIN_LEAD - Date.now() : -1;
+      // Before the window: re-check when it opens. Inside it (this clock ahead of the server's, or no
+      // link set yet): retry every 30 s while the event runs.
+      const wait = props.e.at ? props.e.at.getTime() - JOIN_LEAD - Date.now() : null;
       if (wait > 0 && wait < 864e5) timer = setTimeout(() => recheck.value++, wait + 1000);
+      else if (wait !== null && wait <= 0 && props.e.stage !== 'past') {
+        timer = setTimeout(() => recheck.value++, 30_000);
+      }
       if (savedIds().includes(id)) {
         result.value = null;
         state.value = 'done';

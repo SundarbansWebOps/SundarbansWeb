@@ -552,7 +552,9 @@
                 </td>
                 <td>
                   {{ g.house }}
-                  <span v-if="g.is_member" class="adm-badge mari">member</span>
+                  <span v-if="g.is_member" class="adm-badge mari">{{
+                    g.in_lounge ? 'member · also in Lounge' : 'member'
+                  }}</span>
                   <span v-else-if="g.on_roster" class="adm-badge mari">on roster</span>
                 </td>
                 <td class="when">{{ day(g.submitted_at) }}</td>

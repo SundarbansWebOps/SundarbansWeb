@@ -92,6 +92,9 @@ select throws_ok($$select public.submit_panbs_registration('c2000000-0000-4000-8
 select throws_ok($$select public.submit_panbs_registration('c2000000-0000-4000-8000-0000000000f1',
   '21f1000001@ds.study.iitm.ac.in','Guest','Hogwarts',null,'{"level":"Degree"}')$$, '22023', null, 'unknown house refused');
 select throws_ok($$select public.submit_panbs_registration('c2000000-0000-4000-8000-0000000000f1',
+  '99f9670077@ds.study.iitm.ac.in','Roster Kid','',null,'{"level":"Diploma"}')$$, '22023', null,
+  'a rostered email without a house is refused like anyone else (no roster probing)');
+select throws_ok($$select public.submit_panbs_registration('c2000000-0000-4000-8000-0000000000f1',
   '21f1000001@ds.study.iitm.ac.in','Guest','Gir',null,'{}')$$, '22023', null, 'required form field enforced');
 
 select is(public.submit_panbs_registration('c2000000-0000-4000-8000-0000000000f1',
