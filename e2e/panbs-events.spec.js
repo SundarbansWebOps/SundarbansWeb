@@ -181,3 +181,34 @@ test('registering twice says already registered', async ({ page }) => {
   await pop.getByRole('button', { name: 'Count me in' }).click();
   await expect(pop.getByRole('status')).toContainText('Already registered');
 });
+
+test('a live PANBS event with no link yet keeps the open form while it checks for Join', async ({
+  page,
+}) => {
+  await page.clock.install();
+  const calls = await mockSupabase(page, {
+    signedIn: false,
+    data: {
+      list_public_events: [{ ...PANBS_EVENT, starts_at: soon(-0.01), stage: 'live' }],
+      get_panbs_join_link: null,
+      get_panbs_form: FORM,
+    },
+  });
+  await page.goto('/#/events');
+  await page
+    .getByRole('region', { name: /Live now/ })
+    .getByText('Paradox quiz')
+    .first()
+    .click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Register' }).click();
+  const pop = page.locator('dialog[open]');
+  await pop.getByLabel('Name', { exact: true }).fill('Guest One');
+
+  const before = calls.filter((c) => c.path === '/rest/v1/rpc/get_panbs_join_link').length;
+  await page.clock.runFor(95_000);
+  // It kept checking for the link, and the visitor's half-filled form is untouched.
+  await expect
+    .poll(() => calls.filter((c) => c.path === '/rest/v1/rpc/get_panbs_join_link').length)
+    .toBeGreaterThan(before);
+  await expect(pop.getByLabel('Name', { exact: true })).toHaveValue('Guest One');
+});

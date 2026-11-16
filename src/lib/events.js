@@ -129,6 +129,7 @@ export function fromPublicRow(row) {
     registers: !!row.registers,
     ...when,
     online: /online/i.test(`${dateText} ${row.location ?? ''}`),
+    end: row.ends_at && !Number.isNaN(Date.parse(row.ends_at)) ? new Date(row.ends_at) : null,
     at:
       row.starts_at && !Number.isNaN(Date.parse(row.starts_at))
         ? new Date(row.starts_at)

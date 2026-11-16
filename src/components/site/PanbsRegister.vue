@@ -280,15 +280,36 @@ const phoneRequired = computed(() =>
   (form.value?.fields || []).some((f) => f.prefill === 'phone' && f.required)
 );
 
-// The join window opens 15 minutes before the start. A page left open re-checks at that moment.
+// The join window opens 15 minutes before the start. A page left open checks for the link when it
+// opens, then every 30 s until the event ends (the link may be set late, or this clock may run
+// ahead of the server's). A check only swaps in Join now; it never touches the form or the pop-up.
 const JOIN_LEAD = 15 * 60 * 1000;
-const recheck = ref(0);
 let timer = 0;
 let run = 0; // only the latest load may write state
 onBeforeUnmount(() => clearTimeout(timer));
 
+function schedule(mine) {
+  clearTimeout(timer);
+  const now = Date.now();
+  if (!props.e.at || (props.e.end && now >= props.e.end.getTime())) return;
+  const wait = props.e.at.getTime() - JOIN_LEAD - now;
+  if (wait > 864e5) return;
+  timer = setTimeout(() => poll(mine), wait > 0 ? wait + 1000 : 30_000);
+}
+
+async function poll(mine) {
+  const link = await getPanbsJoinLink(props.e.dbId).catch(() => null);
+  if (mine !== run) return;
+  if (link && state.value !== 'sending') {
+    joinLink.value = link;
+    state.value = 'join';
+    return;
+  }
+  schedule(mine);
+}
+
 watch(
-  () => [props.e.dbId, props.e.stage, recheck.value],
+  () => [props.e.dbId, props.e.stage],
   async ([id]) => {
     const mine = ++run;
     clearTimeout(timer);
@@ -307,13 +328,7 @@ watch(
         return;
       }
       // No link yet: registration stays open (also for a live event with no meeting link set).
-      // Before the window: re-check when it opens. Inside it (this clock ahead of the server's, or no
-      // link set yet): retry every 30 s while the event runs.
-      const wait = props.e.at ? props.e.at.getTime() - JOIN_LEAD - Date.now() : null;
-      if (wait > 0 && wait < 864e5) timer = setTimeout(() => recheck.value++, wait + 1000);
-      else if (wait !== null && wait <= 0 && props.e.stage !== 'past') {
-        timer = setTimeout(() => recheck.value++, 30_000);
-      }
+      if (props.e.stage !== 'past') schedule(mine);
       if (savedIds().includes(id)) {
         result.value = null;
         state.value = 'done';
