@@ -16,7 +16,20 @@
       target="_blank"
       rel="noopener noreferrer"
     >
-      <i class="beat" aria-hidden="true" /><span>Join now</span>
+      <svg class="diya" viewBox="0 0 24 24" aria-hidden="true">
+        <g class="flame">
+          <path d="M12 2.5c2.6 3 3.6 5.2 3.6 7a3.6 3.6 0 0 1-7.2 0c0-1.8 1-4 3.6-7z" />
+          <path
+            class="inner"
+            d="M12 6.6c1.2 1.6 1.6 2.6 1.6 3.4a1.6 1.6 0 0 1-3.2 0c0-.8.4-1.8 1.6-3.4z"
+          />
+        </g>
+        <path class="bowl" d="M3 14h18c-.7 3.9-4.5 6.5-9 6.5S3.7 17.9 3 14z" />
+        <circle class="dot" cx="8" cy="16.6" r=".9" />
+        <circle class="dot" cx="12" cy="17.4" r=".9" />
+        <circle class="dot" cx="16" cy="16.6" r=".9" />
+      </svg>
+      <span>Join now</span>
     </a>
 
     <div v-else-if="state === 'wait'" class="cta quiet">Starting in a moment</div>
@@ -445,18 +458,52 @@ async function logIn() {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.beat {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--verm);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--verm) 30%, transparent);
-  animation: beat 1.6s ease-in-out infinite;
+/* Live: a lit diya, the bloom's sibling. The flame flickers while the event runs; on hover it
+   draws up taller, on press it ducks. */
+.cta .diya {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  stroke: none;
+  overflow: visible;
 }
-@keyframes beat {
-  50% {
-    opacity: 0.35;
-    transform: scale(0.7);
+.diya .bowl {
+  fill: var(--mari);
+}
+.diya .dot {
+  fill: var(--verm);
+}
+.diya .flame {
+  fill: var(--verm);
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: flicker 2.4s ease-in-out infinite;
+}
+.diya .inner {
+  fill: var(--mari);
+}
+.cta:hover .diya .flame {
+  scale: 1.18;
+}
+.cta:active .diya .flame {
+  scale: 0.85;
+}
+.diya .flame {
+  transition: scale 0.6s var(--ease-out);
+}
+@keyframes flicker {
+  0%,
+  100% {
+    transform: rotate(0) scaleY(1);
+  }
+  30% {
+    transform: rotate(-4deg) scaleY(1.06);
+  }
+  55% {
+    transform: rotate(3deg) scaleY(0.95);
+  }
+  80% {
+    transform: rotate(-2deg) scaleY(1.03);
   }
 }
 
@@ -654,7 +701,7 @@ h2 {
   color: var(--paper);
 }
 @media (prefers-reduced-motion: reduce) {
-  .beat,
+  .diya .flame,
   .pop[open] {
     animation: none;
   }
