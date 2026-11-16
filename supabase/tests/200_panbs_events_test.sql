@@ -95,16 +95,16 @@ select throws_ok($$select public.submit_panbs_registration('c2000000-0000-4000-8
   '21f1000001@ds.study.iitm.ac.in','Guest','Gir',null,'{}')$$, '22023', null, 'required form field enforced');
 
 select is(public.submit_panbs_registration('c2000000-0000-4000-8000-0000000000f1',
-  ' 21F1000001@DS.study.iitm.ac.in ','Guest One','Nallamala','+919876543210','{"level":"Degree"}')->>'kind',
-  'guest', 'other-house student registers as a guest');
+  ' 21F1000001@DS.study.iitm.ac.in ','Guest One','Nallamala','+919876543210','{"level":"Degree"}'),
+  '{"registered": true}'::jsonb, 'other-house student registers as a guest');
 select throws_ok($$select public.submit_panbs_registration('c2000000-0000-4000-8000-0000000000f1',
   '21f1000001@ds.study.iitm.ac.in','Guest One','Nallamala',null,'{"level":"Degree"}')$$, 'PT409', null, 'one registration per email');
 select is(public.submit_panbs_registration('c2000000-0000-4000-8000-0000000000f1',
-  '99f9670077@ds.study.iitm.ac.in','Roster Kid','Gir',null,'{"level":"Diploma"}')->>'house',
-  'Sundarbans', 'a rostered student is filed under Sundarbans whatever they picked');
+  '99f9670077@ds.study.iitm.ac.in','Roster Kid','Gir',null,'{"level":"Diploma"}'),
+  '{"registered": true}'::jsonb, 'a rostered student gets the same reply (no roster probing)');
 select is(public.submit_panbs_registration('c2000000-0000-4000-8000-0000000000f1',
-  '99f9670003@es.study.iitm.ac.in','Member','Kanha',null,'{"level":"Foundation"}')->>'kind',
-  'member', 'a signed-up member is filed as a member response');
+  '99f9670003@es.study.iitm.ac.in','Member','Kanha',null,'{"level":"Foundation"}'),
+  '{"registered": true}'::jsonb, 'a member email gets the same reply (no member probing)');
 select throws_ok($$select public.submit_panbs_registration('c2000000-0000-4000-8000-0000000000f1',
   '99f9670003@es.study.iitm.ac.in','Member','Kanha',null,'{"level":"Foundation"}')$$, 'PT409', null, 'member registers once');
 select throws_ok($$select * from public.form_guest_responses$$, '42501', null, 'visitors cannot read guests');
@@ -116,20 +116,23 @@ select is((select answers->>'name' from public.form_guest_responses where email 
 select is((select phone from public.form_guest_responses where email = '21f1000001@ds.study.iitm.ac.in'),
   '+919876543210', 'phone is normalised');
 select is((select on_roster from public.form_guest_responses where email = '99f9670077@ds.study.iitm.ac.in'), true, 'roster flag kept');
-select is((select count(*)::int from public.form_responses r join public.event_registrations g on g.response_id = r.id
-  where r.form_id = 'c2000000-0000-4000-8000-0000000000f1' and r.member_id = 'c2000000-0000-4000-8000-000000000003'), 1,
-  'member response and event registration written');
+select is((select house from public.form_guest_responses where email = '99f9670077@ds.study.iitm.ac.in'), 'Sundarbans',
+  'a rostered student is filed under Sundarbans whatever they picked');
+select is((select count(*)::int from public.form_responses where form_id = 'c2000000-0000-4000-8000-0000000000f1'
+  and member_id = 'c2000000-0000-4000-8000-000000000003'), 0, 'a signed-out registration never writes into a member account');
 
 -- ── Admin reads ────────────────────────────────────────────────────────────
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"c2000000-0000-4000-8000-000000000001","role":"authenticated"}';
-select is(jsonb_array_length(public.list_form_guests('c2000000-0000-4000-8000-0000000000f1')), 2, 'Super Admin lists both guests');
+select is(jsonb_array_length(public.list_form_guests('c2000000-0000-4000-8000-0000000000f1')), 3, 'Super Admin lists all three guests');
+select is((select (x->>'is_member')::boolean from jsonb_array_elements(public.list_form_guests('c2000000-0000-4000-8000-0000000000f1')) x
+  where x->>'email' = '99f9670003@es.study.iitm.ac.in'), true, 'the admin list flags the member guest');
 reset role;
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"c2000000-0000-4000-8000-000000000003","role":"authenticated"}';
 select throws_ok($$select public.list_form_guests('c2000000-0000-4000-8000-0000000000f1')$$, '42501', null, 'a student cannot list guests');
 select is((select (x->>'submitted')::boolean from jsonb_array_elements(public.list_lounge_forms()) x
-  where x->>'id' = 'c2000000-0000-4000-8000-0000000000f1'), true, 'the member sees the form as submitted in the Lounge');
+  where x->>'id' = 'c2000000-0000-4000-8000-0000000000f1'), false, 'the member can still register in the Lounge');
 reset role;
 
 -- Inside the join window the link is public for PANBS, never for a house event.

@@ -31,25 +31,29 @@ phone are filled from the fixed fields and not asked twice.
 **Email rule:** must end in `study.iitm.ac.in` (`ds.`, `es.`, `mg.`, `ae.` … subdomains included).
 Personal Gmail is refused.
 
-**How the server files a public registration** (by email, not by what the visitor picked):
+**How the server files a signed-out registration:** always as a guest row. Nobody proves they own
+the email on the public form, so it never writes into a member's account (owner decision
+2026-11-16, after review: otherwise anyone could register a member under their name with made-up
+answers). The reply is the same `{registered: true}` for every email, so the form cannot be used to
+find out who is a member or on the roster.
 
-| Email is… | Stored as |
+| Email is… | Guest row |
 | --- | --- |
-| a signed-up Sundarbans member (`members`) | a normal member response + event registration; shows in the Lounge as registered |
-| on the house roster (`member_roster`) but not signed up | guest row, house = Sundarbans, `on_roster = true` |
-| anything else | guest row with the house they picked (`on_roster = false`) |
+| a signed-up Sundarbans member (`members`) | flagged **member** in the admin list (computed when listed); the member can still register in the Lounge |
+| on the house roster (`member_roster`) | house = Sundarbans, `on_roster = true` |
+| anything else | the house they picked (`on_roster = false`) |
 
 A guest who picks Sundarbans but is not on the roster is kept as picked; the admin can filter it.
 
-**One registration per email per form**, for guests and members alike. A repeat answers
-"already registered". No captcha or rate limit (owner decision: small audience).
+**One registration per email per form**. A repeat answers "already registered". No captcha or rate
+limit (owner decision: small audience); a form stops taking guests at 5000 rows as a flood ceiling.
 
 ## Admin
 
-- Event editor: **Type → PANBS** switch; turning it on clears region/community/cohorts and sets
-  Public. Lists show a PANBS badge.
-- Form responses: members as today; a separate **Guests** list (name, email, house, roster flag,
-  answers) with a house filter. CSV export includes guests in their own file.
+- Event editor: **Scope → PAN BS**; picking it clears region/community/cohorts and sets Public and
+  registration mode. Lists show a PAN BS badge.
+- Form responses: members as today; a separate **Guests** list (name, email, house, member and
+  roster flags, answers) with a house filter. CSV export includes guests in their own file.
 - Guests are not members: no certificates, attendance import or Lounge access.
 
 ## Data

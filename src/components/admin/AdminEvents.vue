@@ -806,7 +806,10 @@ async function edit(e) {
 }
 
 function onScope() {
+  const wasPanbs = form.value.panbs;
   form.value.panbs = form.value.scope === 'panbs';
+  // PAN BS forced Public; leaving it goes back to the members-only default.
+  if (wasPanbs && !form.value.panbs) form.value.is_public = false;
   if (form.value.panbs) onPanbs();
   else if (form.value.scope === 'house') {
     form.value.region_id = null;
@@ -847,6 +850,8 @@ function payload() {
       community_id: null,
       audience_cohorts: [],
       is_public: true,
+      entry_mode: 'register',
+      archive: false,
     };
   }
   const rcHouse = isRc.value && !isSuperAdmin.value && form.value.scope === 'house';

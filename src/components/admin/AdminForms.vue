@@ -552,7 +552,8 @@
                 </td>
                 <td>
                   {{ g.house }}
-                  <span v-if="g.on_roster" class="adm-badge mari">on roster</span>
+                  <span v-if="g.is_member" class="adm-badge mari">member</span>
+                  <span v-else-if="g.on_roster" class="adm-badge mari">on roster</span>
                 </td>
                 <td class="when">{{ day(g.submitted_at) }}</td>
                 <td v-for="f in guestFields" :key="f.key">{{ guestAnswer(g, f) }}</td>
@@ -725,7 +726,7 @@ const eventBoundLock = computed(
 );
 const dlg = ref(null);
 const responsesFor = ref(null);
-// PANBS guests (spec 007): non-members who registered on the public event page.
+// PANBS guests (spec 007): everyone who registered signed out on the public event page.
 const guests = ref([]);
 const guestHouse = ref('all');
 const ROSTER = '\u0000roster';
@@ -767,12 +768,14 @@ function downloadGuests() {
     { key: 'full_name', label: 'Name' },
     { key: 'phone', label: 'Phone' },
     { key: 'house', label: 'House' },
+    { key: 'member', label: 'Sundarbans member' },
     { key: 'roster', label: 'On Sundarbans roster' },
     { key: 'submitted_at', label: 'Submitted' },
     ...guestFields.value.map((f) => ({ key: `q:${f.key}`, label: f.label })),
   ];
   const rows = shownGuests.value.map((g) => ({
     ...g,
+    member: g.is_member ? 'yes' : 'no',
     roster: g.on_roster ? 'yes' : 'no',
     ...Object.fromEntries(guestFields.value.map((f) => [`q:${f.key}`, guestAnswer(g, f)])),
   }));

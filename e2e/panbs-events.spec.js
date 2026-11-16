@@ -45,7 +45,7 @@ test('a signed-out student registers for a PANBS event on the event page', async
       list_public_events: [PANBS_EVENT],
       get_panbs_join_link: null,
       get_panbs_form: FORM,
-      submit_panbs_registration: { kind: 'guest', house: 'Nallamala' },
+      submit_panbs_registration: { registered: true },
     },
   });
   await page.goto('/#/events');

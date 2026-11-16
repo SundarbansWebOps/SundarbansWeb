@@ -1,7 +1,7 @@
 <!--
   PANBS on the public event sheet (spec 007): one button that sits under the event facts, so a long
   description never pushes it out of sight. Register opens a pop-up with the form; anyone with an
-  IITM student email registers without signing in, and the server files them as member or guest.
+  IITM student email registers without signing in; the server files every such sign-up as a guest.
   Signed-in members go to the same form in the Members Lounge. From 15 minutes before the start
   until the end, the button is Join now and opens the meeting.
 -->
@@ -32,12 +32,11 @@
       <span>Join now</span>
     </a>
 
-    <div v-else-if="state === 'wait'" class="cta quiet">Starting in a moment</div>
     <div v-else-if="state === 'closed'" class="cta quiet">Registration closed</div>
 
     <div v-else-if="state === 'done'" class="cta quiet ok" role="status">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4L19 7" /></svg>
-      {{ result?.kind ? 'You’re registered' : 'Already registered' }}
+      {{ result?.registered ? 'You’re registered' : 'Already registered' }}
     </div>
 
     <RouterLink
@@ -95,7 +94,7 @@
           <span class="tick" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="m5 12.5 4.2 4L19 7" /></svg>
           </span>
-          <h2 id="pop-h">{{ result?.kind ? 'You’re registered' : 'Already registered' }}</h2>
+          <h2 id="pop-h">{{ result?.registered ? 'You’re registered' : 'Already registered' }}</h2>
           <p class="sub">Join from this page when it starts.</p>
           <button type="button" class="cta" @click="dlg.close()">Done</button>
         </div>
@@ -139,9 +138,10 @@
               </select>
             </label>
             <label class="f">
-              <span>Phone <small>optional</small></span>
+              <span>Phone <small v-if="!phoneRequired">optional</small></span>
               <input
                 v-model.trim="who.phone"
+                :required="phoneRequired"
                 type="tel"
                 inputmode="tel"
                 maxlength="20"
@@ -228,7 +228,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { closeEvent, fullDate, img } from '../../lib/events.js';
 import { POSTER_ART } from '../../lib/art.js';
 import { signedIn, signInWithGoogle } from '../../lib/auth.js';
@@ -260,7 +260,7 @@ function remember(id) {
   }
 }
 
-const state = ref('loading'); // loading | join | wait | ready | sending | done | closed
+const state = ref('loading'); // loading | join | ready | sending | done | closed
 const dlg = ref(null);
 const sent = ref(false); // the pop-up shows the result until it closes
 const joinLink = ref('');
@@ -274,10 +274,24 @@ const answers = reactive({});
 const busy = computed(() => state.value === 'sending');
 const asked = computed(() => (form.value?.fields || []).filter((f) => !FIXED.has(f.prefill)));
 const emailBad = computed(() => tried.value && !STUDENT_EMAIL.test(who.email));
+// A required question that takes the phone is answered by the fixed Phone field, so that field
+// becomes required too (otherwise the server names a question the visitor never saw).
+const phoneRequired = computed(() =>
+  (form.value?.fields || []).some((f) => f.prefill === 'phone' && f.required)
+);
+
+// The join window opens 15 minutes before the start. A page left open re-checks at that moment.
+const JOIN_LEAD = 15 * 60 * 1000;
+const recheck = ref(0);
+let timer = 0;
+let run = 0; // only the latest load may write state
+onBeforeUnmount(() => clearTimeout(timer));
 
 watch(
-  () => [props.e.dbId, props.e.stage],
-  async ([id, stage]) => {
+  () => [props.e.dbId, props.e.stage, recheck.value],
+  async ([id]) => {
+    const mine = ++run;
+    clearTimeout(timer);
     dlg.value?.close();
     state.value = 'loading';
     error.value = '';
@@ -286,23 +300,22 @@ watch(
     try {
       // The server releases the link only inside the join window, so it decides Join vs Register.
       const link = await getPanbsJoinLink(id).catch(() => null);
-      if (id !== props.e.dbId) return;
+      if (mine !== run) return;
       if (link) {
         joinLink.value = link;
         state.value = 'join';
         return;
       }
-      if (stage === 'live') {
-        state.value = 'wait';
-        return;
-      }
+      // No link yet: registration stays open (also for a live event with no meeting link set).
+      const wait = props.e.at ? props.e.at.getTime() - JOIN_LEAD - Date.now() : -1;
+      if (wait > 0 && wait < 864e5) timer = setTimeout(() => recheck.value++, wait + 1000);
       if (savedIds().includes(id)) {
         result.value = null;
         state.value = 'done';
         return;
       }
       const f = props.e.registers ? await getPanbsForm(id) : null;
-      if (id !== props.e.dbId) return;
+      if (mine !== run) return;
       form.value = f;
       for (const k of Object.keys(answers)) delete answers[k];
       for (const field of f?.fields || []) {
@@ -311,7 +324,7 @@ watch(
       }
       state.value = f ? 'ready' : 'closed';
     } catch {
-      if (id === props.e.dbId) state.value = 'closed';
+      if (mine === run) state.value = 'closed';
     }
   },
   { immediate: true }
@@ -343,6 +356,7 @@ function missing() {
   if (!who.name) return 'Enter your name.';
   if (!STUDENT_EMAIL.test(who.email)) return 'Use your IITM email only.';
   if (!who.house) return 'Choose your house.';
+  if (phoneRequired.value && !who.phone) return 'Phone is required.';
   for (const f of asked.value) {
     if (!f.required) continue;
     const v = answers[f.key];

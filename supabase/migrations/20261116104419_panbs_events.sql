@@ -1,6 +1,6 @@
 -- PANBS events (spec 007): house-wide public events every IITM BS student can register for
--- without signing in. A public registration is filed by email: a signed-up Sundarbans member
--- becomes a normal member response; everyone else becomes a guest row.
+-- without signing in. A signed-out registration is always a guest row (members included; the admin
+-- list flags them). Signed-in members register through the Lounge as usual.
 
 alter table public.events add column panbs boolean not null default false;
 alter table public.events add constraint events_panbs_house_wide_public
@@ -24,7 +24,7 @@ create table public.form_guest_responses (
   unique (form_id, email)
 );
 comment on table public.form_guest_responses is
-  'PANBS registrations from people who are not signed-up Sundarbans members. Read via list_form_guests.';
+  'Signed-out PANBS registrations (anyone with an IITM email, members included). Read via list_form_guests.';
 alter table public.form_guest_responses enable row level security;
 revoke all on table public.form_guest_responses from public, anon, authenticated, service_role;
 
@@ -108,13 +108,13 @@ create function public.submit_panbs_registration(p_form_id uuid, p_email text, p
 returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
-  f public.lounge_forms; field jsonb; m public.members;
+  f public.lounge_forms; field jsonb;
   v_email text := lower(btrim(coalesce(p_email, '')));
   v_name  text := btrim(coalesce(p_name, ''));
   v_phone text := private.normalise_phone_optional(p_phone);
   v_house text := btrim(coalesce(p_house, ''));
   a jsonb := coalesce(p_answers, '{}'::jsonb);
-  v_on_roster boolean; rid uuid;
+  v_on_roster boolean;
 begin
   if v_email !~ '^[a-z0-9._%+-]+@([a-z0-9-]+\.)*study\.iitm\.ac\.in$' then
     raise exception 'Use your IITM student email (ending in study.iitm.ac.in)' using errcode='22023';
@@ -140,25 +140,17 @@ begin
   -- One registration per email per form; serialise racing submits for the same email.
   perform pg_advisory_xact_lock(hashtextextended('panbs:' || f.id::text || ':' || v_email, 0));
 
-  select * into m from public.members where lower(email) = v_email and deleted_at is null;
-  if found then
-    if m.account_status <> 'active' then
-      raise exception 'This Sundarbans account cannot register; contact the house team' using errcode='42501';
-    end if;
-    if exists (select 1 from public.form_responses where form_id = f.id and member_id = m.id) then
-      raise exception 'This email is already registered for this event' using errcode='PT409';
-    end if;
-    insert into public.form_responses (form_id, member_id, submitted_email, field_schema, answers)
-    values (f.id, m.id, m.email, f.fields, a) returning id into rid;
-    insert into public.event_registrations (event_id, member_id, response_id, registered_email)
-    values (f.event_id, m.id, rid, m.email) on conflict do nothing;
-    return jsonb_build_object('kind', 'member');
-  end if;
-
+  -- Nobody proves they own the email here, so a public registration never writes into a member's
+  -- account: everyone is a guest row, and the admin list marks which guests are members. The reply
+  -- is the same for every email, so the form cannot be used to probe who is a member or rostered.
   v_on_roster := exists (select 1 from public.member_roster where lower(email) = v_email);
   if v_on_roster then v_house := 'Sundarbans';
   elsif not (v_house = any (private.iitm_houses())) then
     raise exception 'Choose your house' using errcode='22023';
+  end if;
+  -- A ceiling against scripted floods: no house event comes near this many sign-ups.
+  if (select count(*) from public.form_guest_responses where form_id = f.id) >= 5000 then
+    raise exception 'Registration for this event is closed' using errcode='42501';
   end if;
 
   begin
@@ -167,7 +159,7 @@ begin
   exception when unique_violation then
     raise exception 'This email is already registered for this event' using errcode='PT409';
   end;
-  return jsonb_build_object('kind', 'guest', 'house', v_house);
+  return jsonb_build_object('registered', true);
 end; $$;
 revoke execute on function public.submit_panbs_registration(uuid, text, text, text, text, jsonb) from public;
 grant execute on function public.submit_panbs_registration(uuid, text, text, text, text, jsonb) to anon, authenticated, service_role;
@@ -181,7 +173,9 @@ begin
   end if;
   return coalesce((select jsonb_agg(jsonb_build_object(
       'id', g.id, 'email', g.email, 'full_name', g.full_name, 'phone', g.phone, 'house', g.house,
-      'on_roster', g.on_roster, 'answers', g.answers, 'field_schema', g.field_schema,
+      'on_roster', g.on_roster,
+      'is_member', exists (select 1 from public.members m where lower(m.email) = g.email and m.deleted_at is null),
+      'answers', g.answers, 'field_schema', g.field_schema,
       'submitted_at', g.submitted_at) order by g.submitted_at, g.id)
     from public.form_guest_responses g where g.form_id = p_form_id), '[]');
 end; $$;
