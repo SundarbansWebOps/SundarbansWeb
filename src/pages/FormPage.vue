@@ -1,4 +1,6 @@
-<!-- Member form on its own route. Same field renderer as the Lounge dialog. -->
+<!-- Member form on its own route. Same field renderer as the Lounge dialog, split into pages
+     at page_break questions. Each question renders on its own so file questions can use the
+     upload field; pages stay mounted so Back keeps answers. -->
 <template>
   <div class="lounge-form-shell">
     <header class="lounge-form-nav">
@@ -13,6 +15,9 @@
       </div>
     </header>
     <main id="main-content" class="wrap">
+      <figure v-if="form?.banner_url" class="banner">
+        <img :src="form.banner_url" :alt="form.banner_alt || ''" decoding="async" />
+      </figure>
       <header class="head">
         <p class="kicker">House form</p>
         <h1>{{ form?.group_label || form?.title || 'Form' }}</h1>
@@ -47,17 +52,49 @@
         <p v-if="locked && !isSuperAdmin && !invite" class="msg" role="status">
           Your application is saved. Sending this form is not WhatsApp admission.
         </p>
-        <FormFields
-          v-else-if="canViewFields"
-          ref="fieldsEl"
-          v-model:save-phone="savePhone"
-          :fields="form.fields || []"
-          :disabled="previewOnly || locked || (rejected && !canSubmit)"
-        />
+        <template v-else-if="canViewFields">
+          <div v-for="(pg, pi) in pageBlocks" v-show="pi === page" :key="pi" class="pg">
+            <h2
+              v-if="pageBlocks.length > 1"
+              :ref="(el) => setPageHead(pi, el)"
+              class="pg-title"
+              tabindex="-1"
+            >
+              Page {{ pi + 1 }} of {{ pageBlocks.length }}
+            </h2>
+            <template v-for="block in pg" :key="block.key">
+              <div v-if="block.kind === 'section'" class="sec">
+                <h2 class="sec-title">{{ block.field.label }}</h2>
+                <p v-if="block.field.description" class="sec-desc">
+                  {{ block.field.description }}
+                </p>
+              </div>
+              <FormFileField
+                v-else-if="block.kind === 'file'"
+                :ref="(el) => setFieldRef(block.key, el)"
+                :field="block.field"
+                :form-id="form.id"
+                :disabled="fieldsDisabled"
+                @update:model-value="(list) => setFileIds(block.key, list)"
+                @update:busy="(value) => setBusy(block.key, value)"
+              />
+              <div v-else class="fblock">
+                <p v-if="block.field.description" class="fdesc">{{ block.field.description }}</p>
+                <FormFields
+                  :ref="(el) => setFieldRef(block.key, el)"
+                  v-model:save-phone="savePhone"
+                  :fields="block.fields"
+                  :disabled="fieldsDisabled"
+                />
+              </div>
+            </template>
+          </div>
+        </template>
         <p v-if="previewOnly" class="msg" role="status">Preview only. {{ unavailableMessage }}</p>
         <p v-else-if="!canSubmit && !locked" class="msg" role="status">
           {{ unavailableMessage }}
         </p>
+        <p v-if="uploadsBusy" class="msg" role="status">Finish the uploads to continue.</p>
         <p v-if="error" class="msg err" role="alert">{{ error }}</p>
         <p v-if="invite" class="next" role="status">
           <strong>Saved. One step left.</strong>
@@ -76,8 +113,25 @@
           your response.
         </p>
         <div class="acts">
-          <button v-if="!locked && !done && canSubmit" class="go" type="submit" :disabled="busy">
-            {{ busy ? 'Sending…' : rejected ? 'Send again' : 'Send' }}
+          <button v-if="canViewFields && page > 0" class="ghost" type="button" @click="goBack">
+            Back
+          </button>
+          <button
+            v-if="canViewFields && !isLast"
+            class="go"
+            type="button"
+            :disabled="uploadsBusy"
+            @click="goNext"
+          >
+            Next
+          </button>
+          <button
+            v-if="!locked && !done && canSubmit && isLast"
+            class="go"
+            type="submit"
+            :disabled="submitting || uploadsBusy"
+          >
+            {{ submitting ? 'Sending…' : rejected ? 'Send again' : 'Send' }}
           </button>
           <a v-if="invite" class="go join" :href="invite" target="_blank" rel="noopener noreferrer"
             >Open WhatsApp invite <span aria-hidden="true">→</span></a
@@ -90,7 +144,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
+import { computed, nextTick, onMounted, onBeforeUnmount, reactive, ref } from 'vue';
 import { onBeforeRouteLeave, useRoute } from 'vue-router';
 import { theme } from '../components/lounge/state.js';
 import { setTheme, theme as siteTheme } from '../lib/theme.js';
@@ -98,6 +152,7 @@ import '../components/lounge/lounge.css';
 import '../components/lounge/panels.css';
 import '../components/lounge/tokens.css';
 import FormFields from '../components/lounge/FormFields.vue';
+import FormFileField from '../components/lounge/FormFileField.vue';
 import {
   fetchInvite,
   formById,
@@ -115,13 +170,21 @@ root.classList.add('lounge-active');
 root.dataset.theme = theme.value;
 const ready = ref(false);
 const loadError = ref('');
-const fieldsEl = ref(null);
 const savePhone = ref(false);
-const busy = ref(false);
+const submitting = ref(false);
 const error = ref('');
 const done = ref(false);
 const invite = ref('');
 const inviteError = ref('');
+const page = ref(0);
+
+// Input components by field key (FormFields for answers, FormFileField for files).
+const fieldRefs = new Map();
+const pageHeads = [];
+// Ready file ids per file question, and the questions still uploading or preparing.
+const fileIds = reactive({});
+const busyFields = reactive(new Set());
+const uploadsBusy = computed(() => busyFields.size > 0);
 
 const form = computed(() => formById(route.params.id));
 /* Submitted and not rejected: final. A rejected response can be filled in again. */
@@ -132,12 +195,82 @@ const canSubmit = computed(
 );
 const previewOnly = computed(() => isSuperAdmin.value && !canSubmit.value);
 const canViewFields = computed(() => canSubmit.value || isSuperAdmin.value);
+const fieldsDisabled = computed(
+  () => previewOnly.value || locked.value || (rejected.value && !canSubmit.value)
+);
 const unavailableMessage = computed(() =>
   formUnavailableMessage(form.value, member.region_id, member.cohort)
 );
 
+// Pages are split at page_break questions. Section headers and questions become blocks;
+// page_break itself is never rendered or answered.
+const pageBlocks = computed(() => {
+  const pages = [[]];
+  (form.value?.fields || []).forEach((field, index) => {
+    if (field.type === 'page_break') {
+      pages.push([]);
+      return;
+    }
+    const kind = field.type === 'section' ? 'section' : field.type === 'file' ? 'file' : 'input';
+    pages[pages.length - 1].push({
+      key: field.key || `block-${index}`,
+      kind,
+      field,
+      fields: [field],
+    });
+  });
+  return pages;
+});
+const isLast = computed(() => page.value >= pageBlocks.value.length - 1);
+
 function toggleTheme() {
   setTheme(theme.value === 'dark' ? 'light' : 'dark');
+}
+
+function setFieldRef(key, el) {
+  if (el) fieldRefs.set(key, el);
+  else fieldRefs.delete(key);
+}
+
+function setPageHead(index, el) {
+  pageHeads[index] = el;
+}
+
+function setFileIds(key, list) {
+  fileIds[key] = list.map((file) => file.file_id);
+}
+
+function setBusy(key, value) {
+  if (value) busyFields.add(key);
+  else busyFields.delete(key);
+}
+
+// Validates every question on one page. Runs in reverse so the focus call from the
+// earliest invalid question lands last and wins.
+async function validatePage(index) {
+  let ok = true;
+  const blocks = pageBlocks.value[index].filter((block) => block.kind !== 'section').reverse();
+  for (const block of blocks) {
+    const input = fieldRefs.get(block.key);
+    if (input && !(await input.validate())) ok = false;
+  }
+  return ok;
+}
+
+async function goTo(index) {
+  page.value = index;
+  await nextTick();
+  pageHeads[index]?.focus();
+}
+
+async function goNext() {
+  if (uploadsBusy.value || isLast.value) return;
+  if (!(await validatePage(page.value))) return;
+  await goTo(page.value + 1);
+}
+
+function goBack() {
+  if (page.value > 0) goTo(page.value - 1);
 }
 
 onBeforeRouteLeave((to) => {
@@ -174,17 +307,37 @@ async function loadInvite() {
   }
 }
 
+function collectAnswers() {
+  const out = {};
+  for (const blocks of pageBlocks.value) {
+    for (const block of blocks) {
+      if (block.kind === 'section') continue;
+      if (block.kind === 'file') out[block.field.key] = fileIds[block.key] ?? [];
+      else Object.assign(out, fieldRefs.get(block.key)?.answers() ?? {});
+    }
+  }
+  return out;
+}
+
 async function send() {
-  if (busy.value || !form.value || locked.value || !canSubmit.value) return;
-  if (!(await fieldsEl.value?.validate())) return;
-  busy.value = true;
+  if (!isLast.value) return goNext();
+  if (submitting.value || uploadsBusy.value || !form.value || locked.value || !canSubmit.value) {
+    return;
+  }
+  // Check every page; if one fails, show it and land on it.
+  for (let i = 0; i < pageBlocks.value.length; i++) {
+    if (await validatePage(i)) continue;
+    if (i !== page.value) {
+      page.value = i;
+      await nextTick();
+      await validatePage(i);
+    }
+    return;
+  }
+  submitting.value = true;
   error.value = '';
   try {
-    const result = await submitLoungeForm(
-      form.value.id,
-      fieldsEl.value?.answers() ?? {},
-      savePhone.value
-    );
+    const result = await submitLoungeForm(form.value.id, collectAnswers(), savePhone.value);
     done.value = true;
     invite.value = result?.invite_url || '';
     if (!invite.value && result?.response_id) {
@@ -193,7 +346,7 @@ async function send() {
   } catch (err) {
     error.value = errorText(err);
   } finally {
-    busy.value = false;
+    submitting.value = false;
   }
 }
 </script>
@@ -260,6 +413,20 @@ async function send() {
   display: grid;
   gap: 22px;
 }
+.banner {
+  margin: 0;
+  overflow: hidden;
+  aspect-ratio: 3 / 1;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--paper);
+}
+.banner img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 .kicker {
   margin: 0 0 8px;
   font-size: 12px;
@@ -291,6 +458,40 @@ h1 {
   background: var(--card);
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
+}
+.pg {
+  display: grid;
+  gap: 14px;
+}
+.pg-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.sec {
+  display: grid;
+  gap: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.sec-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.sec-desc,
+.fdesc {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  white-space: pre-line;
+}
+.fblock {
+  display: grid;
+  gap: 8px;
 }
 .msg {
   margin: 0;
@@ -327,9 +528,11 @@ h1 {
   min-height: 44px;
   padding: 0 18px;
   border-radius: 99px;
+  font: inherit;
   font-size: 15px;
   font-weight: 650;
   text-decoration: none;
+  cursor: pointer;
 }
 .go {
   border: 0;
@@ -361,6 +564,7 @@ h1 {
 }
 .go:disabled {
   opacity: 0.55;
+  cursor: default;
 }
 .ghost {
   border: 1.5px solid var(--line-strong);
@@ -426,6 +630,11 @@ h1 {
   }
   .wrap {
     padding: 24px 16px 40px;
+  }
+}
+@media (max-width: 560px) {
+  .banner {
+    aspect-ratio: 16 / 9;
   }
 }
 </style>
