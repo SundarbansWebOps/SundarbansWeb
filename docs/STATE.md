@@ -1,9 +1,11 @@
 # Sundarbans House — State
 
-> IITM BS frontend/backend · Last checkpoint: 2026-10-19 18:06 IST
+> IITM BS frontend/backend · Last checkpoint: 2026-11-19 19:33 IST
 
 ## In progress / next
 
+- **Lounge winter season — PR #235 merged (`e93da1d`).** Next: Raja is weighing a site-wide winter theme (public site deferred so far); decide scope before building. See `sessions/2026-11-19.md`.
+- **Leaderboard page** — uncommitted WIP in the main checkout on `feat/leaderboard-page` (spec `specs/006-leaderboard-points.md`). Don't disturb it.
 - **Mobile navbar repair — `fix/mobile-navigation`, worktree `~/Anuraj-dev/Frontend-mobile-navigation`, based on production main `519c075`.** Lounge header now uses two mobile columns; its bottom bar/header height switch together at 760px. Admin mobile destinations stay in normal flow with readable 12px text, spaced links and 32px action buttons. Public navbar audited without source changes. User requested fix, preview server, commit and PR. **Next:** Review the PR and required CI; deployment remains outside this request. See `sessions/2026-10-19.md`.
 - **Admin Command Desk — PR #204 merged into upstream main (`519c075`).** Production art is on Cloudinary under `sundarbans/admin-command-desk/`. Throwaway admin HTML stays local and is gitignored.
 - **Admin backend rollout.** Remote Website Backend now has migrations `20261019110000_notice_publishing.sql`, `20261019120000_admin_dashboard_reads.sql`, and `20261019130000_member_google_avatars.sql`; `supabase migration list --linked` confirmed all three applied. The dashboard hides unpublished notices, and anonymization clears cached avatars. `20261010000000_audit_fixes.sql` is preserved under `supabase/held-migrations/` and excluded from the active migration set because it conflicts with the live Oct 16 event policy. Add migrations using the workflow in `conventions.md`; port any still-needed held fixes through a separate forward migration.
@@ -18,6 +20,7 @@
 
 ## Architecture map
 
+- Lounge winter: `src/components/lounge/home/{season.js,WinterLayer.vue,art.js}`; winter art = `*-winter-{day,night}` twins beside the normal art.
 - Auth, client, router: `src/lib/{auth,auth-profile,supabase}.js`, `src/router/index.js`.
 - Admin: `src/pages/AdminPage.vue`, `src/components/admin/`, `src/lib/admin.js`.
 - Lounge: `src/lib/lounge.js`, `src/components/lounge/`, `src/pages/{LoungePage,FormPage}.vue`.
@@ -32,6 +35,7 @@
 
 ## Key decisions
 
+- Lounge winter is automatic Nov 1–end Feb IST, no member toggle; `?winter` / `?winter=0` override. CSS/DOM snow only, no library or canvas.
 - Admin prototype A remains selected; reuse public design tokens and the shared navigation frame.
 - Admin profile matches Lounge's avatar treatment: use a Google photo when available, otherwise the circular Sundarbans crest; member Google photos remain optional, and anonymization clears cached photos.
 - Keep the old Oct 10 audit migration out of the active Supabase migration directory until its remaining fixes are reconciled; it conflicts with the Oct 16 event scope policy.
@@ -40,6 +44,8 @@
 
 ## Gotchas
 
+- Winter art.js swap is Lounge-wide: winter plates also show on the Events band and WelcomeTour (keeps the Home↔Events morph consistent).
+- Night snow is masked to light pools measured from `.h-mine`/`.h-boat` offsets; moving those elements in `lounge.css` needs `WinterLayer.vue` measure() kept in sync.
 - Preserve unrelated changes in every worktree; don't reset or clean.
 - The local IAB session has no admin credentials and redirects to sign-in for Admin and Lounge; verify those signed-in views in Raja's browser.
 - Vite can retain stale scoped CSS after HMR; use a fresh page load for visual review.
