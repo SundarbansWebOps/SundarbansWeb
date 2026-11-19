@@ -1,3 +1,4 @@
+import { decodeFileAnswer } from './form-files.js';
 // Admin lounge data: every call goes through Supabase as the signed-in organizer, and
 // the database decides what they may see or change (row-level security plus the RPC checks).
 // Changes to a student's record are requests; a different Super Admin approves them.
@@ -741,6 +742,16 @@ export async function listForms() {
   });
 }
 
+export const formFileLink = (id) => `${location.origin}/#/admin/files/${id}`;
+
+export const getFormDriveFolder = (formId) =>
+  supabase.rpc('get_form_drive_folder', { p_form_id: formId }).then(unwrap);
+
+export const saveFormBanner = (formId, url, alt = null) =>
+  supabase
+    .rpc('save_lounge_form_banner', { p_form_id: formId, p_url: url, p_alt: alt })
+    .then(unwrap);
+
 export const saveForm = (form) => loungeSaveForm(form);
 
 export const boundFormForEvent = (forms, eventId) =>
@@ -865,11 +876,17 @@ export function formResponsesToCsv(payload) {
   const byIdentity = new Map();
   for (const row of rows) {
     for (const field of row.field_schema || []) {
-      if (!field?.key) continue;
+      if (!field?.key || ['section', 'page_break'].includes(field.type)) continue;
       const identity = JSON.stringify([field.key, field.label || field.key, field.type || '']);
       if (byIdentity.has(identity)) continue;
       const column = `answer:${identity}`;
-      const entry = { key: field.key, identity, column, label: field.label || field.key };
+      const entry = {
+        key: field.key,
+        identity,
+        column,
+        label: field.label || field.key,
+        type: field.type,
+      };
       byIdentity.set(identity, entry);
       fields.push(entry);
     }
@@ -931,6 +948,12 @@ export function formResponsesToCsv(payload) {
       const field = byIdentity.get(identity);
       if (!field) continue;
       const value = row.answers?.[captured.key];
+      if (field.type === 'file') {
+        out[field.column] = decodeFileAnswer(value)
+          .map(({ file_id }) => formFileLink(file_id))
+          .join(' ');
+        continue;
+      }
       out[field.column] = Array.isArray(value) ? value.join('; ') : (value ?? '');
     }
     return out;

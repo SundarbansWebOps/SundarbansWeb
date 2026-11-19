@@ -13,7 +13,7 @@
     <p v-if="field.description" :id="descId" class="ffile-desc">{{ field.description }}</p>
 
     <div
-      v-if="!disabled && canAdd"
+      v-if="!disabled && !restoring && canAdd"
       class="ffile-drop"
       :class="{ on: dragging }"
       @dragenter.prevent="dragging = true"
@@ -36,6 +36,7 @@
         @change="onPick"
       />
     </div>
+    <p v-else-if="restoring" class="ffile-hint" role="status">Loading pending uploads…</p>
     <p v-else-if="!disabled" :id="hintId" class="ffile-hint">
       Limit reached. Remove a file to add another.
     </p>
@@ -54,6 +55,7 @@
             type="button"
             class="ffile-remove"
             :aria-label="`Remove ${item.name}`"
+            :disabled="item.status === 'removing'"
             @click="remove(item)"
           >
             Remove
@@ -106,6 +108,8 @@ const props = defineProps({
   field: { type: Object, required: true },
   formId: { type: String, required: true },
   disabled: { type: Boolean, default: false },
+  restoring: { type: Boolean, default: false },
+  pendingFiles: { type: Array, default: () => [] },
   // Files already attached to a submitted response (name only), shown read-only.
   savedFiles: { type: Array, default: () => [] },
 });
@@ -132,7 +136,7 @@ const liveItems = computed(() => items.value.filter((item) => item.status !== 'e
 const readyCount = computed(() => items.value.filter((item) => item.status === 'ready').length);
 const canAdd = computed(() => liveItems.value.length < max.value);
 const busy = computed(() =>
-  items.value.some((item) => item.status === 'preparing' || item.status === 'uploading')
+  items.value.some((item) => ['preparing', 'uploading', 'removing'].includes(item.status))
 );
 const hint = computed(() => {
   const photoMb = FILE_LIMITS.imageSourceBytes / (1024 * 1024);
@@ -146,7 +150,9 @@ const hint = computed(() => {
 function stateText(item) {
   if (item.status === 'preparing') return 'Preparing…';
   if (item.status === 'uploading') return `Uploading ${Math.round(item.progress * 100)}%`;
-  if (item.status === 'ready') return 'Attached';
+  if (item.status === 'ready') return 'Ready';
+  if (item.status === 'interrupted') return 'Upload interrupted';
+  if (item.status === 'removing') return 'Removing…';
   return 'Not added';
 }
 
@@ -163,6 +169,25 @@ watch(
     emit('update:busy', busy.value);
   },
   { deep: true }
+);
+
+watch(
+  () => props.pendingFiles,
+  (files) => {
+    for (const file of files) {
+      if (items.value.some((item) => item.file_id === file.file_id)) continue;
+      const allowed =
+        kind.value === 'any' ||
+        (kind.value === 'pdf' ? file.mime === 'application/pdf' : file.mime.startsWith('image/'));
+      items.value.push({
+        ...file,
+        uid: ++nextUid,
+        status: file.status === 'ready' && allowed ? 'ready' : 'interrupted',
+        controller: new AbortController(),
+      });
+    }
+  },
+  { immediate: true }
 );
 
 function pick() {
@@ -182,7 +207,7 @@ function onDrop(event) {
 }
 
 function addFiles(files) {
-  if (!files.length) return;
+  if (props.disabled || props.restoring || !files.length) return;
   error.value = '';
   notice.value = '';
   const free = max.value - liveItems.value.length;
@@ -217,18 +242,15 @@ async function upload(item, file) {
       fieldKey: props.field.key,
       prepared,
       signal,
+      onStart: (id) => (item.file_id = id),
       onProgress: (fraction) => {
         item.progress = Math.min(Math.max(Number(fraction) || 0, 0), 1);
       },
     });
-    if (signal.aborted) {
-      // Removed mid-upload: the server copy is no longer wanted.
-      await removeFormFile(result.file_id).catch(() => {});
-      return;
-    }
+    if (signal.aborted) return;
     Object.assign(item, {
+      ...result,
       status: 'ready',
-      file_id: result.file_id,
       name: result.name ?? item.name,
       progress: 1,
     });
@@ -243,29 +265,33 @@ async function remove(item) {
   error.value = '';
   notice.value = '';
   item.controller.abort();
+  const previous = item.status;
+  if (item.file_id) {
+    item.status = 'removing';
+    try {
+      await removeFormFile(item.file_id);
+    } catch (err) {
+      item.status = previous === 'uploading' ? 'interrupted' : previous;
+      error.value = err?.message || `${item.name} couldn't be removed. Try again.`;
+      return;
+    }
+  }
   const index = items.value.indexOf(item);
   if (index !== -1) items.value.splice(index, 1);
-  if (item.status !== 'ready' || !item.file_id) return;
-  try {
-    await removeFormFile(item.file_id);
-  } catch (err) {
-    // Keep it listed so the member can try again; the file is still attached on the server.
-    items.value.splice(index, 0, item);
-    error.value = err?.message || `${item.name} couldn't be removed. Try again.`;
-    await nextTick();
-  }
 }
 
 // Used by the page before moving on or submitting. Returns false and shows the reason.
-function validate() {
+function validate(focus = true) {
   error.value = '';
   if (busy.value) {
     error.value = 'Wait for the upload to finish.';
+  } else if (readyCount.value > max.value) {
+    error.value = `Remove files until no more than ${max.value} are ready.`;
   } else if (props.field.required && readyCount.value === 0) {
     error.value = `${props.field.label} needs at least one file.`;
   }
   if (!error.value) return true;
-  nextTick(() => root.value?.querySelector('.ffile-choose, .ffile-remove')?.focus());
+  if (focus) nextTick(() => root.value?.querySelector('.ffile-choose, .ffile-remove')?.focus());
   return false;
 }
 

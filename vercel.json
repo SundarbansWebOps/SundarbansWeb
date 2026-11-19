@@ -6,7 +6,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'sha256-bee1jpy1joM8anZJz8UEp0aj2JAz1Jceck05S0o7/zw='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://res.cloudinary.com https://*.googleusercontent.com https://avatars.githubusercontent.com; media-src 'self' blob:; connect-src 'self' https://bqoejoznqudcyeaebmsm.supabase.co wss://bqoejoznqudcyeaebmsm.supabase.co https://api.cloudinary.com https://formspree.io; worker-src 'self' blob:; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
+          "value": "default-src 'self'; script-src 'self' 'sha256-bee1jpy1joM8anZJz8UEp0aj2JAz1Jceck05S0o7/zw='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://res.cloudinary.com https://*.googleusercontent.com https://avatars.githubusercontent.com; media-src 'self' blob:; connect-src 'self' https://bqoejoznqudcyeaebmsm.supabase.co wss://bqoejoznqudcyeaebmsm.supabase.co https://api.cloudinary.com https://formspree.io https://www.googleapis.com; worker-src 'self' blob:; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
         },
         { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains" },
         { "key": "X-Content-Type-Options", "value": "nosniff" },

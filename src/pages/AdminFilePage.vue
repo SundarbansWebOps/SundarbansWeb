@@ -14,7 +14,11 @@
     <figure v-else-if="kind === 'image'" class="frame">
       <img :src="src" alt="Uploaded form file" />
     </figure>
-    <iframe v-else-if="kind === 'pdf'" class="frame pdf" :src="src" title="Uploaded PDF file" />
+    <p v-else-if="kind === 'pdf'" class="back-row">
+      <a class="adm-btn ghost small" :href="src" target="_blank" rel="noopener noreferrer">
+        Open PDF in a new tab
+      </a>
+    </p>
   </main>
 </template>
 
@@ -107,10 +111,5 @@ onBeforeUnmount(() => {
   display: block;
   max-width: 100%;
   height: auto;
-}
-.frame.pdf {
-  width: 100%;
-  height: min(78vh, 900px);
-  border: 1px solid var(--line);
 }
 </style>

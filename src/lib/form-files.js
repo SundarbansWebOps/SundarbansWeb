@@ -138,7 +138,7 @@ function putToDrive(url, blob, mime, onProgress, signal) {
 
 // prepared: the result of prepareFile. Resolves { file_id, name, mime, size }; after any failure
 // past `start` the half-made upload is removed (best effort).
-export async function uploadFormFile({ formId, fieldKey, prepared, onProgress, signal }) {
+export async function uploadFormFile({ formId, fieldKey, prepared, onProgress, onStart, signal }) {
   const started = await invoke('form-file', {
     action: 'start',
     form_id: formId,
@@ -147,23 +147,32 @@ export async function uploadFormFile({ formId, fieldKey, prepared, onProgress, s
     mime: prepared.mime,
     size: prepared.size,
   });
-  try {
-    const drive = await putToDrive(
-      started.upload_url,
-      prepared.blob,
-      prepared.mime,
-      onProgress,
-      signal
-    );
-    return await invoke('form-file', {
-      action: 'finish',
-      file_id: started.file_id,
-      drive_file_id: drive.id,
-    });
-  } catch (e) {
-    await removeFormFile(started.file_id).catch(() => {});
-    throw e;
-  }
+  onStart?.(started.file_id);
+  const drive = await putToDrive(
+    started.upload_url,
+    prepared.blob,
+    prepared.mime,
+    onProgress,
+    signal
+  ).catch(async (error) => {
+    await invoke('form-file', { action: 'cancel', file_id: started.file_id }).catch(() => {});
+    throw error;
+  });
+  return await invoke('form-file', {
+    action: 'finish',
+    file_id: started.file_id,
+    drive_file_id: drive.id,
+  });
+}
+
+export const listPendingFormFiles = (formId) =>
+  invoke('form-file', { action: 'list', form_id: formId });
+
+export function decodeFileAnswer(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => (typeof entry === 'string' ? { file_id: entry } : entry))
+    .filter((entry) => /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(entry?.file_id ?? ''));
 }
 
 export async function removeFormFile(fileId) {
@@ -172,7 +181,7 @@ export async function removeFormFile(fileId) {
 
 // Manager-only. The function streams the file after its access check; we need the raw bytes, so
 // this calls it with fetch rather than the JSON-oriented functions client.
-export async function fetchFormFileBlob(fileId) {
+export async function fetchFormFileBlob(fileId, signal) {
   const { data } = await supabase.auth.getSession();
   const token = data?.session?.access_token;
   if (!token) throw new Error('Sign in again to open this file.');
@@ -183,6 +192,7 @@ export async function fetchFormFileBlob(fileId) {
     res = await fetch(`${SUPABASE_URL}/functions/v1/form-file`, {
       method: 'POST',
       headers,
+      signal,
       body: JSON.stringify({ action: 'view', file_id: fileId }),
     });
   } catch {
@@ -201,6 +211,8 @@ export const signFormBanner = (formId) => invoke('sign-form-banner', { form_id: 
 export const BANNER_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 export const BANNER_MAX_BYTES = 10 * 1024 * 1024;
 const BANNER_DELIVERY = 'f_auto,q_auto:good,w_1600,c_limit';
+export const bannerThumbnail = (url) =>
+  url?.replace(BANNER_DELIVERY, 'f_auto,q_auto,w_80,h_80,c_fill,g_auto');
 
 // Returns the banner's secure delivery URL (what lounge_forms.banner_url stores).
 export async function uploadFormBanner(formId, file) {

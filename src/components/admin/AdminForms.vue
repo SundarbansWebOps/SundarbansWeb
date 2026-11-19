@@ -472,6 +472,15 @@
       @close="closeResponses"
     >
       <div class="resp-bar">
+        <a
+          v-if="isSuperAdmin && driveFolder"
+          class="adm-btn ghost small"
+          :href="`https://drive.google.com/drive/folders/${encodeURIComponent(driveFolder)}`"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Open Drive folder
+        </a>
         <p class="adm-note" aria-live="polite">
           <template v-if="!respLoading && !respError">
             <b>{{ responses.length }}</b>
@@ -611,7 +620,7 @@
                     <span v-else class="file-wait">Loading…</span>
                     <a
                       class="file-link"
-                      :href="fileLink(id)"
+                      :href="formFileLink(id)"
                       target="_blank"
                       rel="noopener noreferrer"
                       >Open<span class="visually-hidden"> {{ f.label }} file {{ n + 1 }}</span></a
@@ -743,7 +752,7 @@ import AdminDialog from './AdminDialog.vue';
 import AdminSelect from './AdminSelect.vue';
 import AdminCohortSelect from './AdminCohortSelect.vue';
 import { askConfirm } from '../../lib/admin-confirm.js';
-import { fetchFormFileBlob, uploadFormBanner } from '../../lib/form-files.js';
+import { decodeFileAnswer, fetchFormFileBlob, uploadFormBanner } from '../../lib/form-files.js';
 import { auth, errorText, isRc, isSuperAdmin } from '../../lib/auth.js';
 import {
   FORM_FIELD_TYPES,
@@ -758,7 +767,9 @@ import {
   exportFormResponses,
   listFormGuests,
   fieldKeyFromLabel,
+  formFileLink,
   formResponsesToCsv,
+  getFormDriveFolder,
   getAvailableCohorts,
   listEvents,
   listForms,
@@ -767,6 +778,7 @@ import {
   requestFormPublish,
   reviewFormResponse,
   saveForm,
+  saveFormBanner,
   sortResponses,
 } from '../../lib/admin.js';
 
@@ -915,7 +927,9 @@ function downloadGuests() {
   downloadCsv(`${responsesFor.value.title}-guests.csv`, rows, columns);
 }
 const responses = ref([]);
-const responseFields = ref([]);
+const responseFields = computed(() => formResponsesToCsv(responses.value).fields);
+const driveFolder = ref('');
+let responseRun = 0;
 const respError = ref('');
 const respLoading = ref(false);
 const statusFilter = ref('all');
@@ -936,7 +950,7 @@ const bannerNotice = ref('');
 const thumbs = reactive({});
 const thumbQueue = [];
 let thumbActive = 0;
-let thumbGen = 0;
+let thumbController = new AbortController();
 const viewing = ref(null);
 let fieldN = 0;
 
@@ -1328,9 +1342,10 @@ async function save(mode) {
       group_purpose: form.value.form_kind === 'group' ? form.value.group_purpose || null : null,
       archived_at: form.value.archived_at || null,
       source_url: form.value.source_url || null,
-      banner_url: form.value.banner_url || null,
-      banner_alt: form.value.banner_alt || null,
     };
+    const oldAlt = forms.value.find((row) => row.id === form.value.id)?.banner_alt || '';
+    if ((form.value.banner_alt || '') !== oldAlt)
+      payload.banner_alt = form.value.banner_alt || null;
     if (form.value.remove_invite) payload.invite_url = null;
     else if (form.value.invite_url) payload.invite_url = form.value.invite_url;
     if (mode === 'publish' && approvalScope.value) {
@@ -1473,15 +1488,13 @@ function answerText(row, field) {
   return String(value);
 }
 
-// A file question's answer is a list of file ids. The column identity ends in its type.
-const isFileColumn = (field) => JSON.parse(field.identity)[2] === 'file';
+const isFileColumn = (field) => field.type === 'file';
 function fileIdsOf(row, field) {
   if (!isFileColumn(field)) return [];
   const captured = capturedField(row, field);
   const value = captured ? row.answers?.[captured.key] : null;
-  return Array.isArray(value) ? value.filter((id) => typeof id === 'string') : [];
+  return decodeFileAnswer(value).map(({ file_id }) => file_id);
 }
-const fileLink = (id) => `${location.origin}/#/admin/files/${id}`;
 const isPreviewable = (type) => type.startsWith('image/') || type === 'application/pdf';
 function ensureThumb(id) {
   if (thumbs[id]) return;
@@ -1492,34 +1505,44 @@ function ensureThumb(id) {
 function pumpThumbs() {
   while (thumbActive < 3 && thumbQueue.length) {
     const id = thumbQueue.shift();
-    const gen = thumbGen;
+    const { signal } = thumbController;
     thumbActive += 1;
-    fetchFormFileBlob(id)
+    fetchFormFileBlob(id, signal)
       .then((blob) => {
-        if (gen !== thumbGen) return;
+        if (signal.aborted) return;
         if (!isPreviewable(blob.type || '')) throw new Error('unsupported');
         thumbs[id] = { state: 'ready', url: URL.createObjectURL(blob), type: blob.type };
       })
       .catch(() => {
-        if (gen === thumbGen) thumbs[id] = { state: 'error', url: '', type: '' };
+        if (!signal.aborted) thumbs[id] = { state: 'error', url: '', type: '' };
       })
       .finally(() => {
-        if (gen !== thumbGen) return;
+        if (signal.aborted) return;
         thumbActive -= 1;
         pumpThumbs();
       });
   }
 }
-function queueFiles(rows) {
+watch([shownResponses, responseFields, respLoading], ([rows, fields, loading]) => {
+  if (!responsesFor.value || loading) return;
+  const visibleIds = new Set();
   for (const row of rows) {
-    for (const field of responseFields.value) {
-      for (const id of fileIdsOf(row, field)) ensureThumb(id);
+    for (const field of fields) {
+      for (const id of fileIdsOf(row, field)) visibleIds.add(id);
     }
   }
-}
+  for (let i = thumbQueue.length - 1; i >= 0; i--) {
+    const id = thumbQueue[i];
+    if (visibleIds.has(id)) continue;
+    thumbQueue.splice(i, 1);
+    delete thumbs[id];
+  }
+  for (const id of visibleIds) ensureThumb(id);
+});
 // Drops in-flight loads (their blobs are discarded on arrival) and revokes shown previews.
 function releaseThumbs() {
-  thumbGen += 1;
+  thumbController.abort();
+  thumbController = new AbortController();
   thumbActive = 0;
   thumbQueue.length = 0;
   for (const id of Object.keys(thumbs)) {
@@ -1529,6 +1552,7 @@ function releaseThumbs() {
   viewing.value = null;
 }
 function closeResponses() {
+  responseRun++;
   releaseThumbs();
   responsesFor.value = null;
 }
@@ -1539,16 +1563,26 @@ function viewPhoto(id, label) {
 function openPdf(id) {
   window.open(thumbs[id]?.url, '_blank', 'noopener');
 }
-onBeforeUnmount(releaseThumbs);
+onBeforeUnmount(closeResponses);
 
 async function openResponses(f) {
+  const run = ++responseRun;
   releaseThumbs();
   responsesFor.value = f;
   responses.value = [];
-  responseFields.value = [];
+  driveFolder.value = '';
+  respError.value = '';
+  if (isSuperAdmin.value && f.has_files) {
+    getFormDriveFolder(f.id)
+      .then((id) => {
+        if (run === responseRun) driveFolder.value = id;
+      })
+      .catch((err) => {
+        if (run === responseRun) respError.value = errorText(err);
+      });
+  }
   guests.value = [];
   guestHouse.value = 'all';
-  respError.value = '';
   reviewError.value = '';
   refreshNotice.value = '';
   statusFilter.value = 'all';
@@ -1559,64 +1593,52 @@ async function openResponses(f) {
       exportFormResponses(f.id),
       listFormGuests(f.id).catch(() => []),
     ]);
+    if (run !== responseRun) return;
     responses.value = rows;
     guests.value = guestRows ?? [];
-    responseFields.value = formResponsesToCsv(rows).fields;
-    queueFiles(rows);
   } catch (e) {
-    respError.value = errorText(e);
+    if (run === responseRun) respError.value = errorText(e);
   } finally {
-    respLoading.value = false;
+    if (run === responseRun) respLoading.value = false;
   }
 }
 
-// Banner saves go on the stored row, not the draft, so unsaved question edits stay unsaved.
-function storedRow() {
-  return forms.value.find((r) => r.id === form.value?.id) ?? null;
+async function changeBanner(file) {
+  const draft = form.value;
+  const formId = draft?.id;
+  if (!formId || bannerBusy.value) return;
+  const alt = draft.banner_alt || null;
+  bannerBusy.value = true;
+  bannerError.value = '';
+  bannerNotice.value = '';
+  try {
+    const url = file ? await uploadFormBanner(formId, file) : null;
+    await saveFormBanner(formId, url, alt);
+    const stored = forms.value.find((row) => row.id === formId);
+    if (stored) {
+      stored.banner_url = url;
+      if (file) stored.banner_alt = alt;
+    }
+    if (form.value === draft) {
+      draft.banner_url = url;
+      bannerNotice.value = file ? 'Banner saved.' : 'Banner removed.';
+    }
+    emit('changed');
+  } catch (err) {
+    if (form.value === draft) bannerError.value = errorText(err);
+  } finally {
+    bannerBusy.value = false;
+  }
 }
-async function onBannerPick(event) {
+
+function onBannerPick(event) {
   const file = event.target.files?.[0];
   event.target.value = '';
-  if (!file || !form.value?.id) return;
-  const stored = storedRow();
-  if (!stored) {
-    bannerError.value = 'Reopen the form to add a banner.';
-    return;
-  }
-  bannerBusy.value = true;
-  bannerError.value = '';
-  bannerNotice.value = '';
-  try {
-    const url = await uploadFormBanner(form.value.id, file);
-    const banner_alt = form.value.banner_alt || null;
-    await saveForm({ ...stored, banner_url: url, banner_alt });
-    Object.assign(stored, { banner_url: url, banner_alt });
-    form.value.banner_url = url;
-    bannerNotice.value = 'Banner saved.';
-    emit('changed');
-  } catch (e) {
-    bannerError.value = errorText(e);
-  } finally {
-    bannerBusy.value = false;
-  }
+  if (file) changeBanner(file);
 }
-async function removeBanner() {
-  const stored = storedRow();
-  if (!stored) return;
-  bannerBusy.value = true;
-  bannerError.value = '';
-  bannerNotice.value = '';
-  try {
-    await saveForm({ ...stored, banner_url: null });
-    Object.assign(stored, { banner_url: null });
-    form.value.banner_url = null;
-    bannerNotice.value = 'Banner removed.';
-    emit('changed');
-  } catch (e) {
-    bannerError.value = errorText(e);
-  } finally {
-    bannerBusy.value = false;
-  }
+
+function removeBanner() {
+  return changeBanner(null);
 }
 
 function askReject(r) {
@@ -1626,10 +1648,10 @@ function askReject(r) {
 }
 
 // Re-reads the list so reviewer and time come from the database. Returns false when that fails.
-async function refreshResponses(formId) {
+async function refreshResponses(formId, run) {
   try {
     const rows = await exportFormResponses(formId);
-    if (responsesFor.value?.id === formId) responses.value = rows;
+    if (run === responseRun) responses.value = rows;
     return true;
   } catch {
     return false;
@@ -1644,6 +1666,7 @@ async function review(r, status, reason = null) {
   reviewError.value = '';
   refreshNotice.value = '';
   const formId = responsesFor.value?.id;
+  const run = responseRun;
   try {
     const saved = await reviewFormResponse(
       r.id,
@@ -1651,7 +1674,7 @@ async function review(r, status, reason = null) {
       r.resubmitted_at ?? r.submitted_at,
       reason
     );
-    if (responsesFor.value?.id === formId) {
+    if (run === responseRun && responsesFor.value?.id === formId) {
       const pending = saved.review_status === 'pending';
       responses.value = responses.value.map((x) =>
         x.id === r.id
@@ -1666,17 +1689,18 @@ async function review(r, status, reason = null) {
           : x
       );
     }
-    refreshResponses(formId).then((ok) => {
-      if (!ok && responsesFor.value?.id === formId)
-        refreshNotice.value = "Saved, but couldn't refresh the list.";
+    if (run !== responseRun) return true;
+    refreshResponses(formId, run).then((ok) => {
+      if (!ok && run === responseRun) refreshNotice.value = "Saved, but couldn't refresh the list.";
     });
     return true;
   } catch (e) {
+    if (run !== responseRun) return false;
     if (e?.code === 'PT409') {
       // The member changed their answers since this list loaded: drop the decision and reload.
       rejectDlg.value?.close();
       reviewError.value = errorText(e);
-      if (!(await refreshResponses(formId)))
+      if (!(await refreshResponses(formId, run)) && run === responseRun)
         refreshNotice.value = "Couldn't refresh the list. Close and reopen it.";
     } else if (rejecting.value) rejectError.value = errorText(e);
     else reviewError.value = errorText(e);
@@ -1694,21 +1718,8 @@ async function confirmReject() {
   if (await review(target, 'rejected', reason)) rejectDlg.value?.close();
 }
 
-// The CSV carries one admin-gated site link per file, separated by spaces.
-function linkedRows(rows) {
-  return rows.map((r) => {
-    const fileKeys = (r.field_schema || []).filter((f) => f.type === 'file').map((f) => f.key);
-    if (!fileKeys.length) return r;
-    const answers = { ...r.answers };
-    for (const key of fileKeys) {
-      const ids = Array.isArray(answers[key]) ? answers[key] : [];
-      answers[key] = ids.map((id) => fileLink(id)).join(' ');
-    }
-    return { ...r, answers };
-  });
-}
 function downloadResponses() {
-  const csv = formResponsesToCsv(linkedRows(responses.value));
+  const csv = formResponsesToCsv(responses.value);
   downloadCsv(`${responsesFor.value.title}-responses.csv`, csv.rows, csv.columns);
 }
 </script>

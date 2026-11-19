@@ -63,7 +63,16 @@
             <span class="mb-rope" aria-hidden="true"></span>
             <span class="mb-tag">
               <span class="mb-eye" aria-hidden="true"></span>
-              <span class="mb-wa" aria-hidden="true">
+              <span v-if="g.banner" class="mb-wa">
+                <img
+                  class="mb-thumbnail"
+                  :src="g.banner"
+                  :alt="g.bannerAlt"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </span>
+              <span v-else class="mb-wa" aria-hidden="true">
                 <svg viewBox="0 0 24 24">
                   <path
                     fill="#fff"
@@ -96,7 +105,16 @@
             <span class="mb-rope" aria-hidden="true"></span>
             <span class="mb-tag">
               <span class="mb-eye" aria-hidden="true"></span>
-              <span class="mb-wa" aria-hidden="true">
+              <span v-if="g.banner" class="mb-wa">
+                <img
+                  class="mb-thumbnail"
+                  :src="g.banner"
+                  :alt="g.bannerAlt"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </span>
+              <span v-else class="mb-wa" aria-hidden="true">
                 <svg viewBox="0 0 24 24">
                   <path
                     fill="#fff"
@@ -133,7 +151,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { isSuperAdmin } from '../../../lib/auth.js';
 import { formUnavailableMessage } from '../../../lib/lounge.js';
 import { member } from '../fixtures.js';
-import { groupsSection, lounge, openGroupForms } from '../session.js';
+import { bannerThumbnail } from '../../../lib/form-files.js';
+import { formById, groupsSection, lounge, openGroupForms } from '../session.js';
 import { mode } from '../state.js';
 import { MOORED } from './art.js';
 import { animate, reduced, vLoop } from './motion.js';
@@ -150,6 +169,8 @@ const boats = computed(() => {
     .map((g) => ({
       id: g.id,
       label: g.name || g.label,
+      banner: bannerThumbnail(formById(g.id)?.banner_url),
+      bannerAlt: formById(g.id)?.banner_alt || '',
       why: rejected(g)
         ? g.review_reason
           ? `Note from the admins: ${g.review_reason}`
@@ -181,6 +202,8 @@ const boats = computed(() => {
     .map((f) => ({
       id: f.id,
       label: f.group_label || f.title,
+      banner: bannerThumbnail(f.banner_url),
+      bannerAlt: f.banner_alt || '',
       why: [
         f.group_purpose || '',
         isSuperAdmin.value && !(f.accepting_responses ?? f.is_open)
@@ -460,6 +483,12 @@ function splash(ev) {
   height: 28px;
   border-radius: 50%;
   background: #25d366;
+}
+.mb-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 12px;
 }
 .mb-wa svg {
   width: 16px;

@@ -90,6 +90,18 @@ export const listForms = () => rpc('list_lounge_forms');
 export const saveForm = (form) => rpc('save_lounge_form', { p_form: form });
 export const submitForm = (id, answers, savePhone = false) =>
   rpc('submit_lounge_form', { p_form_id: id, p_answers: answers, p_save_phone: savePhone });
+export async function getOwnFormResponse(formId, memberId) {
+  return unwrap(
+    await (
+      await sb()
+    )
+      .from('form_responses')
+      .select('answers,field_schema')
+      .eq('form_id', formId)
+      .eq('member_id', memberId)
+      .maybeSingle()
+  );
+}
 export const getFormInvite = (id) => rpc('get_lounge_form_invite', { p_form_id: id });
 export const groupFormsForMember = (forms, regionId) =>
   forms.filter(

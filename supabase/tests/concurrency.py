@@ -32,7 +32,7 @@ def worker_query(uid, body):
     return f"BEGIN; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claims='{claims}'; {body}; COMMIT;"
 
 
-def race(name, blocking_mutation, worker_sql, unchanged_query):
+def race(name, blocking_mutation, worker_sql, unchanged_query, *, expected_state="42501", expected_output=None):
     blocker_name = f'lounge-blocker-{RUN_ID}-{name}'
     worker_name = f'lounge-worker-{RUN_ID}-{name}'
     blocker = subprocess.Popen(PSQL, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -70,11 +70,14 @@ def race(name, blocking_mutation, worker_sql, unchanged_query):
             if blocker.poll() is not None:
                 raise RuntimeError(blocker.stderr.read())
         stdout, stderr = worker.communicate(timeout=15)
-        if worker.returncode == 0 or '42501' not in stderr:
-            raise AssertionError(f'{name}: stale authorization accepted or wrong failure: {stdout} {stderr}')
+        if expected_output is not None:
+            if worker.returncode or stdout.strip() != expected_output:
+                raise AssertionError(f'{name}: unexpected RPC result: {stdout} {stderr}')
+        elif worker.returncode == 0 or expected_state not in stderr:
+            raise AssertionError(f'{name}: wrong SQLSTATE: {stdout} {stderr}')
         if sql(unchanged_query) != 't':
             raise AssertionError(f'{name}: rejected operation still changed protected records')
-        print(f'PASS {name}: pg_blocking_pids confirmed lock wait; post-commit RPC denied 42501; no protected write', flush=True)
+        print(f'PASS {name}: pg_blocking_pids confirmed lock wait and the post-commit state was checked', flush=True)
     finally:
         if worker is not None and worker.poll() is None:
             worker.terminate()
@@ -237,12 +240,72 @@ def race_duplicate_roster_add(r1):
         blocker.communicate(timeout=10)
 
 
+def race_form_attachments(region):
+    member = IDS['member']
+    form = str(uuid.uuid4())
+    file_id = str(uuid.uuid4())
+    schema = json.dumps([
+        {'key': key, 'label': key, 'type': 'file', 'accept': 'image', 'max_files': 10}
+        for key in ('proof', 'extra', 'a', 'b', 'c', 'd', 'e')
+    ])
+    def start(field):
+        return f"SELECT public.svc_form_file_start('{member}','{form}','{field}','proof.png','image/png',10)"
+
+    def svc(query):
+        return f"BEGIN; SET LOCAL ROLE service_role; {query}; COMMIT;"
+
+    try:
+        sql(f"""INSERT INTO public.lounge_forms(id,title,region_id,published_at,created_by,fields)
+          VALUES('{form}','Attachment race',{region},now(),'{IDS['rc']}','{schema}')""")
+        empty = f"SELECT NOT EXISTS(SELECT 1 FROM public.form_files WHERE form_id='{form}')"
+        race('upload-form-close', f"UPDATE public.lounge_forms SET is_open=false WHERE id='{form}'",
+             svc(start('proof')), empty)
+        sql(f"UPDATE public.lounge_forms SET is_open=true WHERE id='{form}'")
+
+        # Leave one member-wide slot. Both fields independently have their full allowance.
+        sql(f"""INSERT INTO public.form_files(form_id,field_key,member_id,original_name,mime,size_bytes)
+          SELECT '{form}', key, '{member}', 'quota.png', 'image/png', 10
+          FROM unnest(array['a','b','c','d','e']) AS key CROSS JOIN generate_series(1,10) n
+          WHERE key <> 'e' OR n < 10""")
+        race('upload-member-cap', f"SET LOCAL ROLE service_role; {start('proof')}",
+             svc(start('extra')),
+             f"SELECT count(*)=50 FROM public.form_files WHERE form_id='{form}'",
+             expected_state='22023')
+        sql(f"DELETE FROM public.form_files WHERE form_id='{form}'")
+
+        sql(f"""INSERT INTO public.form_files(id,form_id,field_key,member_id,original_name,mime,size_bytes)
+            VALUES('{file_id}','{form}','proof','{member}','race.png','image/png',10)""")
+        finish = f"SELECT public.svc_form_file_finish_ok('{member}','{file_id}','RACEFILE{RUN_ID}')"
+        cancel = f"SELECT public.svc_form_file_discard('{member}','{file_id}',true)"
+        # Model a late PUT completion: cancellation wins before finish can publish the bytes.
+        race('cancel-before-upload-finish', f"SET LOCAL ROLE service_role; {cancel}", svc(finish),
+             f"SELECT status='delete_pending' FROM public.form_files WHERE id='{file_id}'",
+             expected_state='PT409')
+        sql(f"UPDATE public.form_files SET status='uploading' WHERE id='{file_id}'")
+
+        # A failed verifier wakes after the successful verifier commits, and cannot claim deletion.
+        race('finish-before-stale-verifier', f"SET LOCAL ROLE service_role; {finish}", svc(cancel),
+             f"SELECT status='ready' AND drive_file_id='RACEFILE{RUN_ID}' FROM public.form_files WHERE id='{file_id}'",
+             expected_output='f')
+        answer = json.dumps({'proof': [file_id]})
+        claims = json.dumps({'sub': member, 'role': 'authenticated'})
+        submit = f"SELECT public.submit_lounge_form('{form}','{answer}')"
+        race('submit-before-upload-start', f"SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claims='{claims}'; {submit}",
+             svc(start('extra')), f"SELECT status='attached' FROM public.form_files WHERE id='{file_id}'",
+             expected_state='PT409')
+    finally:
+        sql(f"""DELETE FROM public.form_files WHERE form_id='{form}';
+            DELETE FROM public.form_responses WHERE form_id='{form}';
+            DELETE FROM public.lounge_forms WHERE id='{form}';""")
+
+
 try:
     # pgTAP fixtures roll back; independent sessions need their own test-only pepper.
     sql("SELECT vault.create_secret(repeat('local-concurrency-only-',3),'blacklist_hash_pepper') WHERE NOT EXISTS (SELECT 1 FROM vault.decrypted_secrets WHERE name='blacklist_hash_pepper')")
     r1, r2 = setup()
     race_roster_region_change(r1, r2)
     race_duplicate_roster_add(r1)
+    race_form_attachments(r1)
     race('attendance-scope-change', f"UPDATE public.events SET region_id={r2} WHERE id='{IDS['import']}'",
          worker_query(IDS['rc'], f"SELECT public.import_event_attendance('{IDS['import']}', '[{{\"email\":\"race-member-{RUN_ID}@ds.study.iitm.ac.in\",\"duration_seconds\":1200}}]')"),
          f"SELECT NOT EXISTS(SELECT 1 FROM public.event_attendance WHERE event_id='{IDS['import']}')")

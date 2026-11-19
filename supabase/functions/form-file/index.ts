@@ -1,10 +1,12 @@
 // form-file
-// POST JSON { "action": "start" | "finish" | "remove" | "view", ... }   Caller: signed-in member.
+// POST JSON { "action": "start" | "finish" | "remove" | "cancel" | "list" | "view", ... }.
 // The database decides every action (svc_form_file_* RPCs); this function only talks to Drive.
 //
 //   start  { form_id, field_key, name, mime, size } -> { file_id, upload_url }
 //   finish { file_id, drive_file_id }               -> { file_id, name, mime, size }
 //   remove { file_id }                              -> { ok: true }
+//   cancel { file_id }                              -> { ok: true } (only while uploading)
+//   list   { form_id }                              -> caller's pending file metadata
 //   view   { file_id }                              -> the file bytes (managers of the form only)
 //
 // Files live in the house Drive, private. The browser uploads straight to a Drive resumable session
@@ -15,7 +17,7 @@ import {
   createFolder,
   createUploadSession,
   deleteFile,
-  deleteForRow,
+  generateFileId,
   getMeta,
   isDriveId,
   magicMatches,
@@ -62,6 +64,7 @@ async function start(actor: string, body: Record<string, unknown>, req: Request)
   const origin = allowedOrigin(req);
   if (!origin) throw new HttpError(403, 'forbidden', 'Uploads are only allowed from the Sundarbans site');
 
+  after(sweepFormFiles(10));
   const row = await rpc('svc_form_file_start', {
     p_actor: actor,
     p_form_id: formId,
@@ -83,7 +86,9 @@ async function start(actor: string, body: Record<string, unknown>, req: Request)
       folder = await rpc('svc_form_drive_folder_set', { p_form_id: formId, p_folder_id: made });
       if (folder !== made) await deleteFile(made).catch(() => {});
     }
+    const driveId = await generateFileId();
     const uploadUrl = await createUploadSession({
+      driveId,
       name: row.drive_name,
       parent: folder!,
       fileId: row.file_id,
@@ -91,25 +96,20 @@ async function start(actor: string, body: Record<string, unknown>, req: Request)
       size,
       origin,
     });
-    after(sweepFormFiles(10));
+    await rpc('svc_form_file_session', { p_actor: actor, p_file_id: row.file_id, p_drive_file_id: driveId, p_url: uploadUrl });
     return { file_id: row.file_id, upload_url: uploadUrl };
   } catch (e) {
-    await rpc('svc_form_file_discard', { p_actor: actor, p_file_id: row.file_id })
-      .then(() => rpc('svc_form_files_done', { p_ids: [row.file_id] }))
+    await discard(actor, row.file_id, true)
       .catch((err) => console.error('form-file start cleanup:', err));
     throw e;
   }
 }
 
-// Removes a row's Drive file and then the row. A Drive failure leaves it delete_pending (sweep).
-async function discard(actor: string, fileId: string) {
-  const row = await rpc('svc_form_file_discard', { p_actor: actor, p_file_id: fileId });
-  try {
-    await deleteForRow(fileId, row.drive_file_id);
-    await rpc('svc_form_files_done', { p_ids: [fileId] });
-  } catch (e) {
-    console.error('form-file discard left for sweep:', fileId, e);
-  }
+async function discard(actor: string, fileId: string, uploadingOnly = false) {
+  const queued = await rpc('svc_form_file_discard', {
+    p_actor: actor, p_file_id: fileId, p_uploading_only: uploadingOnly,
+  });
+  if (queued) after(sweepFormFiles(1, { fileId }));
 }
 
 async function finish(actor: string, body: Record<string, unknown>) {
@@ -121,21 +121,14 @@ async function finish(actor: string, body: Record<string, unknown>) {
 
   const fail = async (why: string): Promise<never> => {
     console.error('form-file finish rejected', fileId, why);
-    // Delete only what is provably this row's: the claimed file if its appProperties say so, plus
-    // anything Drive holds for this row id. Never a file the caller merely named.
-    try {
-      const meta = await getMeta(driveId);
-      if (meta?.appProperties?.form_file_id === fileId) await deleteFile(driveId);
-    } catch (e) {
-      console.error('form-file finish cleanup (claimed file):', e);
-    }
-    await discard(actor, fileId).catch((e) => console.error('form-file finish cleanup (row):', e));
+    await discard(actor, fileId, true).catch((e) => console.error('form-file finish cleanup:', e));
     throw new HttpError(422, 'verification_failed', 'That upload could not be verified. Please try again.');
   };
 
-  if (target.status === 'ready' && target.drive_file_id === driveId) {
+  if (target.status === 'ready') {
     return await rpc('svc_form_file_finish_ok', { p_actor: actor, p_file_id: fileId, p_drive_file_id: driveId });
   }
+  if (target.drive_file_id && target.drive_file_id !== driveId) return await fail('ID mismatch');
   if (!target.folder_id) return await fail('no folder');
   const meta = await getMeta(driveId);
   if (!meta) return await fail('not found');
@@ -184,6 +177,11 @@ serve('form-file', async (req: Request) => {
     case 'remove':
       await discard(actor, uuidField(body, 'file_id'));
       return { ok: true };
+    case 'cancel':
+      await discard(actor, uuidField(body, 'file_id'), true);
+      return { ok: true };
+    case 'list':
+      return await rpc('svc_form_file_list', { p_actor: actor, p_form_id: uuidField(body, 'form_id') });
     case 'view':
       return await view(actor, body);
     default:

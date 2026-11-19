@@ -328,8 +328,8 @@ async function act(run, message) {
   busy.value = true;
   error.value = notice.value = '';
   try {
-    await run();
-    notice.value = message;
+    const result = await run();
+    notice.value = typeof message === 'function' ? message(result) : message;
     await load();
     emit('changed');
   } catch (e) {
@@ -354,7 +354,17 @@ function approve(r) {
       confirmLabel: 'Erase permanently',
       danger: true,
     }).then(
-      (yes) => yes && act(() => executeHardDelete(r.id), 'Erased. Their account has been removed.')
+      (yes) =>
+        yes &&
+        act(
+          () => executeHardDelete(r.id),
+          (result) => {
+            const remaining = result?.form_files_remaining;
+            return remaining
+              ? `Their account has been removed. Drive cleanup is pending for ${remaining} file(s).`
+              : 'Erased. Their account has been removed.';
+          }
+        )
     );
   }
   return act(async () => {

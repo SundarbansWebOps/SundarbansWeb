@@ -11,6 +11,8 @@
         <textarea
           v-if="field.type === 'textarea'"
           :id="idFor(field)"
+          :aria-invalid="errors[field.key] ? 'true' : undefined"
+          :aria-describedby="errors[field.key] ? errorId(field) : undefined"
           v-model="draft[field.key]"
           rows="3"
           :required="field.required"
@@ -20,6 +22,8 @@
         <input
           v-else
           :id="idFor(field)"
+          :aria-invalid="errors[field.key] ? 'true' : undefined"
+          :aria-describedby="errors[field.key] ? errorId(field) : undefined"
           v-model="draft[field.key]"
           :type="inputType(field)"
           :required="field.required"
@@ -37,6 +41,8 @@
         >
         <select
           :id="idFor(field)"
+          :aria-invalid="errors[field.key] ? 'true' : undefined"
+          :aria-describedby="errors[field.key] ? errorId(field) : undefined"
           v-model="draft[field.key]"
           :required="field.required"
           :disabled="disabled"
@@ -102,6 +108,9 @@
 
       <label v-else-if="field.type === 'checkbox'" class="ff-check">
         <input
+          :id="idFor(field)"
+          :aria-invalid="errors[field.key] ? 'true' : undefined"
+          :aria-describedby="errors[field.key] ? errorId(field) : undefined"
           v-model="draft[field.key]"
           type="checkbox"
           :required="field.required"
@@ -109,6 +118,14 @@
         />
         {{ field.label }}
       </label>
+      <p
+        v-if="field.type !== 'multiselect' && errors[field.key]"
+        :id="errorId(field)"
+        class="ff-error"
+        role="alert"
+      >
+        {{ errors[field.key] }}
+      </p>
     </template>
 
     <label v-if="phoneField" class="ff-check">
@@ -199,10 +216,10 @@ watch(
 );
 
 defineExpose({
-  async validate() {
+  async validate(focus = true) {
     for (const field of props.fields) {
       delete errors[field.key];
-      if (!field.required) continue;
+      const value = String(draft[field.key] ?? '');
       let valid = true;
       if (field.type === 'multiselect') {
         valid =
@@ -214,15 +231,24 @@ defineExpose({
       } else {
         valid = !!String(draft[field.key] ?? '').trim();
       }
-      if (!valid) errors[field.key] = `${field.label} is required.`;
+      if (field.required && !valid) {
+        errors[field.key] = `${field.label} is required.`;
+      } else if (field.type === 'email' && value && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) {
+        errors[field.key] = 'Enter a valid email address.';
+      } else if (
+        ['phone', 'tel'].includes(field.type) &&
+        value.trim() &&
+        !/^(?:\+|00)[1-9][0-9]{7,14}$/.test(value.replace(/[\s().-]/g, ''))
+      ) {
+        errors[field.key] = 'Enter your phone number with its country code, e.g. +919876543210.';
+      }
     }
     const invalid = props.fields.find((field) => errors[field.key]);
-    if (invalid) {
+    if (invalid && focus) {
       await nextTick();
       document.getElementById(idFor(invalid))?.focus();
-      return false;
     }
-    return true;
+    return !invalid;
   },
   answers() {
     const out = {};

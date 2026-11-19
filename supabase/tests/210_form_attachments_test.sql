@@ -25,6 +25,7 @@ select id, 'rc', 1, null, (select id from ct where k = 'sa') from ct where k = '
 -- File ids made during the test, by label.
 create temp table ff(k text primary key, id uuid);
 grant select on ff to authenticated;
+grant select, insert on ff to service_role;
 
 -- ── Field validation and banner ─────────────────────────────────────────────
 set local role authenticated;
@@ -43,6 +44,13 @@ select lives_ok($$select public.save_lounge_form(jsonb_build_object('id','c21000
  'published_at',(select published_at from public.lounge_forms where id='c2100000-0000-4000-8000-0000000000f1'),
  'fields',(select fields from public.lounge_forms where id='c2100000-0000-4000-8000-0000000000f1')))$$, 'a save that omits the banner');
 select is((select banner_alt from public.lounge_forms where id='c2100000-0000-4000-8000-0000000000f1'), 'Camp', 'keeps the stored banner');
+select lives_ok($$select public.save_lounge_form_banner('c2100000-0000-4000-8000-0000000000f1',
+ 'https://res.cloudinary.com/l59gy0g2/image/upload/v1/sundarbans/forms/replacement.png','Updated alt')$$,
+ 'a banner-only save updates the existing form');
+select ok((select published_at is not null and title='Camp sign-up' and jsonb_array_length(fields)=5 and banner_alt='Updated alt'
+ from public.lounge_forms where id='c2100000-0000-4000-8000-0000000000f1'), 'a banner-only save keeps the publication and questions');
+select throws_ok($$select public.save_lounge_form_banner('c2100000-0000-4000-8000-0000000000f9',null)$$,
+ 'P0002', null, 'a banner-only save cannot recreate a missing form');
 select throws_ok($$select public.save_lounge_form(jsonb_build_object('id','c2100000-0000-4000-8000-0000000000f9','title','x','region_id',1,'banner_url','https://example.com/a.png'))$$,
  '23514', null, 'a non-Cloudinary banner is refused');
 select throws_ok($$select public.save_lounge_form(jsonb_build_object('id','c2100000-0000-4000-8000-0000000000f9','title','x','region_id',1,'banner_alt',repeat('a',301)))$$,
@@ -80,20 +88,23 @@ select throws_ok($$select public.svc_form_files_sweep(10)$$, '42501', null, 'a m
 reset role;
 
 -- ── Start checks (run as the service role, acting as the member) ───────────
+set local role service_role;
 select lives_ok($$insert into ff select 'a', (public.svc_form_file_start('c2100000-0000-4000-8000-000000000003','c2100000-0000-4000-8000-0000000000f1','proof','../../etc/pa*ss\wd.webp','image/webp',1000)->>'file_id')::uuid$$,
  'start: a photo for a photo question');
+reset role;
 select ok((select original_name !~ '[/\\*]' and left(original_name,1) <> '.' from public.form_files where id=(select id from ff where k='a')), 'the name is sanitised');
 select is((select status from public.form_files where id=(select id from ff where k='a')), 'uploading', 'the row starts as uploading');
-select is(public.svc_form_file_start('c2100000-0000-4000-8000-000000000003','c2100000-0000-4000-8000-0000000000f1','proof','b.png','image/png',2000)->>'drive_name',
- '99f9670003 – Payment proof – 2.png', 'the Drive name is "<email local> – <label> – <n>.<ext>"');
-insert into ff select 'b', id from public.form_files where member_id='c2100000-0000-4000-8000-000000000003' and original_name='b.png';
+set local role service_role;
+insert into ff select 'b', (r->>'file_id')::uuid from public.svc_form_file_start('c2100000-0000-4000-8000-000000000003','c2100000-0000-4000-8000-0000000000f1','proof','b.png','image/png',2000) r
+ where r->>'drive_name' = '99f9670003 – Payment proof – 2.png';
+select ok(exists(select 1 from ff where k='b'), 'the Drive name is "<email local> – <label> – <n>.<ext>"');
 select throws_ok($$select public.svc_form_file_start('c2100000-0000-4000-8000-000000000003','c2100000-0000-4000-8000-0000000000f1','proof','c.png','image/png',10)$$,
  '22023', null, 'start: max_files is enforced');
 select throws_ok($$select public.svc_form_file_start('c2100000-0000-4000-8000-000000000003','c2100000-0000-4000-8000-0000000000f1','name','c.png','image/png',10)$$,
  '22023', null, 'start: not a file question');
 select throws_ok($$select public.svc_form_file_start('c2100000-0000-4000-8000-000000000003','c2100000-0000-4000-8000-0000000000f1','nope','c.png','image/png',10)$$,
  '22023', null, 'start: unknown question');
-select throws_ok($$select public.svc_form_file_start('c2100000-0000-4000-8000-000000000003','c2100000-0000-4000-8000-0000000000f1','proof','c.pdf','application/pdf',10)$$,
+select throws_ok($$select public.svc_form_file_start('c2100000-0000-4000-8000-000000000004','c2100000-0000-4000-8000-0000000000f1','proof','c.pdf','application/pdf',10)$$,
  '22023', null, 'start: a PDF for a photo-only question');
 select throws_ok($$select public.svc_form_file_start('c2100000-0000-4000-8000-000000000003','c2100000-0000-4000-8000-0000000000f1','doc','c.png','image/png',10)$$,
  '22023', null, 'start: a photo for a PDF-only question');
@@ -122,6 +133,22 @@ insert into ff select 'z', (public.svc_form_file_start('c2100000-0000-4000-8000-
 select public.svc_form_file_finish_ok('c2100000-0000-4000-8000-000000000004',(select id from ff where k='x'),'DRIVEFILEXXXX0005');
 select public.svc_form_file_finish_ok('c2100000-0000-4000-8000-000000000004',(select id from ff where k='z'),'DRIVEFILEZZZZ0006');
 
+reset role;
+-- Existing valid file records can outnumber the current question cap after an edit.
+with extra as (
+ insert into public.form_files(form_id, field_key, member_id, original_name, mime, size_bytes, drive_file_id, status)
+ values ('c2100000-0000-4000-8000-0000000000f1','proof','c2100000-0000-4000-8000-000000000003',
+  'extra.png','image/png',10,'DRIVEFILEEXTRA001','ready') returning id
+)
+insert into ff select 'extra', id from extra;
+
+set local role service_role;
+select is((select count(*)::int from jsonb_array_elements(public.svc_form_file_list(
+ 'c2100000-0000-4000-8000-000000000004','c2100000-0000-4000-8000-0000000000f1')) r
+ where r->>'file_id' in (select id::text from ff where k in ('x','y','z'))
+  and not (r ? 'drive_file_id' or r ? 'upload_session_url')), 3, 'restore lists only safe metadata, including interrupted uploads');
+reset role;
+
 -- ── Submit ──────────────────────────────────────────────────────────────────
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"c2100000-0000-4000-8000-000000000003","role":"authenticated"}';
@@ -133,7 +160,7 @@ select throws_ok($$select public.submit_lounge_form('c2100000-0000-4000-8000-000
  '22023', null, 'submit: a file from another question is refused');
 select throws_ok($$select public.submit_lounge_form('c2100000-0000-4000-8000-0000000000f1',jsonb_build_object('proof',jsonb_build_array((select id from ff where k='a'),(select id from ff where k='a'))))$$,
  '22023', null, 'submit: the same file twice is refused');
-select throws_ok($$select public.submit_lounge_form('c2100000-0000-4000-8000-0000000000f1',jsonb_build_object('proof',jsonb_build_array((select id from ff where k='a'),(select id from ff where k='b'),gen_random_uuid())))$$,
+select throws_ok($$select public.submit_lounge_form('c2100000-0000-4000-8000-0000000000f1',jsonb_build_object('proof',jsonb_build_array((select id from ff where k='a'),(select id from ff where k='b'),(select id from ff where k='extra'))))$$,
  '22023', null, 'submit: more than max_files is refused');
 select throws_ok($$select public.submit_lounge_form('c2100000-0000-4000-8000-0000000000f1',jsonb_build_object('proof',jsonb_build_array((select id from ff where k='a')),'s_info','x'))$$,
  '22023', null, 'submit: a section key cannot carry an answer');
@@ -141,6 +168,10 @@ select throws_ok($$select public.submit_lounge_form('c2100000-0000-4000-8000-000
  '22023', null, 'submit: a malformed file id is refused');
 select lives_ok($$select public.submit_lounge_form('c2100000-0000-4000-8000-0000000000f1',jsonb_build_object('name','S One','proof',jsonb_build_array((select id from ff where k='a'),(select id from ff where k='b')),'doc',jsonb_build_array((select id from ff where k='doc1'))))$$,
  'submit: ready files attach');
+select is(
+ (public.submit_lounge_form('c2100000-0000-4000-8000-0000000000f1',jsonb_build_object('name','S One','proof',jsonb_build_array((select id from ff where k='a'),(select id from ff where k='b')),'doc',jsonb_build_array((select id from ff where k='doc1'))))->>'response_id')::uuid,
+ (select id from public.form_responses where member_id=auth.uid() and form_id='c2100000-0000-4000-8000-0000000000f1'),
+ 'submit replay returns the original response with files now attached');
 reset role;
 select is((select count(*)::int from public.form_files where member_id='c2100000-0000-4000-8000-000000000003' and status='attached' and response_id is not null), 3, 'all three files are attached to the response');
 select is((select answers->'proof'->0->>'name' || '/' || (answers->'proof'->0->>'size') from public.form_responses where member_id='c2100000-0000-4000-8000-000000000003' and form_id='c2100000-0000-4000-8000-0000000000f1'),
@@ -155,11 +186,24 @@ select throws_ok($$select public.submit_lounge_form('c2100000-0000-4000-8000-000
  '22023', null, 'submit: a file that is still uploading is refused');
 reset role;
 
+-- Student two's valid ready PDF must be refused if the form changes to photos.
+set local request.jwt.claims = '{"sub":"c2100000-0000-4000-8000-000000000001","role":"authenticated"}';
+update public.lounge_forms set fields = jsonb_set(fields, '{4,accept}', '"image"')
+ where id='c2100000-0000-4000-8000-0000000000f1';
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"c2100000-0000-4000-8000-000000000004","role":"authenticated"}';
+select throws_ok($$select public.submit_lounge_form('c2100000-0000-4000-8000-0000000000f1',jsonb_build_object('proof',jsonb_build_array((select id from ff where k='x')),'doc',jsonb_build_array((select id from ff where k='z'))))$$,
+ '22023', 'Choose available files of the allowed type for this question', 'submit: current accept policy rejects a previously ready PDF');
+reset role;
+
+set local role service_role;
 -- No more uploads once submitted.
 select throws_ok($$select public.svc_form_file_start('c2100000-0000-4000-8000-000000000003','c2100000-0000-4000-8000-0000000000f1','proof','late.png','image/png',10)$$,
  'PT409', null, 'start: nothing after the member has submitted');
 select throws_ok($$select public.svc_form_file_discard('c2100000-0000-4000-8000-000000000003',(select id from ff where k='a'))$$,
  'PT409', null, 'remove: a submitted file cannot be removed');
+select is(public.svc_form_file_discard('c2100000-0000-4000-8000-000000000003',(select id from ff where k='a'),true),
+ false, 'failed verification cannot discard a submitted attachment');
 
 -- ── View authorisation ──────────────────────────────────────────────────────
 select is(public.svc_form_file_view_target('c2100000-0000-4000-8000-000000000001',(select id from ff where k='a'))->>'drive_file_id', 'DRIVEFILEAAAA0001', 'view: a Super Admin may open it');
@@ -182,35 +226,63 @@ select is((select f->>'has_files' from jsonb_array_elements(public.list_lounge_f
 reset role;
 
 -- Folders: first writer wins.
+set local role service_role;
 select is(public.svc_form_drive_root_set('ROOTFOLDER0000001'), 'ROOTFOLDER0000001', 'the root folder is stored');
 select is(public.svc_form_drive_root_set('ROOTFOLDER0000002'), 'ROOTFOLDER0000001', 'a second writer gets the stored root');
 select is(public.svc_form_drive_folder_set('c2100000-0000-4000-8000-0000000000f1','FORMFOLDER000001'), 'FORMFOLDER000001', 'the form folder is stored');
 
+reset role;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"c2100000-0000-4000-8000-000000000001","role":"authenticated"}';
+select is(public.get_form_drive_folder('c2100000-0000-4000-8000-0000000000f1'), 'FORMFOLDER000001', 'a Super Admin can get the stored folder');
+reset role;
+set local role service_role;
+
 -- ── Sweep ───────────────────────────────────────────────────────────────────
 -- y (uploading) and x (ready) are abandoned once older than 24 h; a fresh row is left alone.
 select is(jsonb_array_length(public.svc_form_files_sweep(10)), 0, 'sweep: nothing is old enough yet');
-update public.form_files set created_at = now() - interval '25 hours' where id in (select id from ff where k in ('x','y'));
+reset role;
+update public.form_files set created_at = now() - interval '25 hours' where id in (select id from ff where k in ('x','y','a'));
+set local role service_role;
 select is((select jsonb_agg(r->>'id' order by r->>'id') from jsonb_array_elements(public.svc_form_files_sweep(10)) r),
  (select jsonb_agg(id::text order by id::text) from ff where k in ('x','y')), 'sweep: picks the abandoned uploads, not the attached ones');
+reset role;
 select is((select count(*)::int from public.form_files where status='delete_pending' and id in (select id from ff where k in ('x','y'))), 2, 'sweep: claimed rows are delete_pending (cannot be attached)');
+set local role service_role;
 select is(public.svc_form_files_done((select array_agg(id) from ff where k in ('x','y'))), 2, 'done: drops the rows');
+reset role;
 select is((select count(*)::int from public.form_files where id in (select id from ff where k in ('x','y'))), 0, 'the abandoned rows are gone');
 select is((select count(*)::int from public.form_files where status='attached' and member_id='c2100000-0000-4000-8000-000000000003'), 3, 'attached files are untouched');
+set local role service_role;
 select is(jsonb_array_length(public.svc_form_files_sweep(10)), 0, 'sweep: attached files are never selected');
+-- Reclaim an expired reservation before checking the single-file quota, even without a sweep.
+reset role;
+update public.form_files set created_at = now() - interval '25 hours' where id = (select id from ff where k='z');
+set local role service_role;
+select lives_ok($$select public.svc_form_file_start('c2100000-0000-4000-8000-000000000004','c2100000-0000-4000-8000-0000000000f1','doc','new.png','image/png',10)$$,
+ 'start: an expired reservation does not consume quota');
+reset role;
 
--- ── Hard delete queues the member's files ──────────────────────────────────
-insert into public.form_files(id, form_id, field_key, member_id, original_name, mime, size_bytes, drive_file_id, status, attached_at)
-values ('c2100000-0000-4000-8000-0000000000a1','c2100000-0000-4000-8000-0000000000f1','proof','c2100000-0000-4000-8000-000000000006','secret-name.png','image/png',10,'DRIVEFILEHARD0007','attached',now());
+-- ── Hard delete queues files even after the form has gone ───────────────────
+insert into public.form_files(id, form_id, field_key, member_id, original_name, mime, size_bytes, drive_file_id, status, attached_at, upload_session_url)
+values
+ ('c2100000-0000-4000-8000-0000000000a1','c2100000-0000-4000-8000-0000000000f1','proof','c2100000-0000-4000-8000-000000000006','secret-name.png','image/png',10,'DRIVEFILEHARD0007','attached',now(),null),
+ ('c2100000-0000-4000-8000-0000000000a2','c2100000-0000-4000-8000-0000000000f1','proof','c2100000-0000-4000-8000-000000000006','queued.png','image/png',10,'DRIVEFILEHARD0008','delete_pending',null,'https://www.googleapis.com/upload/drive/v3/files?upload_id=fixture');
+select private.delete_lounge_form_rows('c2100000-0000-4000-8000-0000000000f1');
+select is((select delete_pending from private.form_file_erasure where id='c2100000-0000-4000-8000-0000000000a1'), false, 'form deletion keeps the attachment');
+select is((select delete_pending from private.form_file_erasure where id='c2100000-0000-4000-8000-0000000000a2'), true, 'form deletion preserves already queued cleanup');
 set local session_replication_role=replica;
 update public.members set account_status='deleted',deleted_at=now()-interval '31 days' where id='c2100000-0000-4000-8000-000000000006';
 set local session_replication_role=origin;
 insert into public.approval_requests(id,type,target_member_id,target_snapshot,reason,requested_by) values('c2100000-0000-4000-8000-0000000000b1','member_hard_delete','c2100000-0000-4000-8000-000000000006','{}','Erase','c2100000-0000-4000-8000-000000000002');
-select is(public.svc_execute_hard_delete('c2100000-0000-4000-8000-000000000001','c2100000-0000-4000-8000-0000000000b1')->>'form_files', '1', 'hard delete reports the files it queued');
-select is((select status || '/' || original_name from public.form_files where id='c2100000-0000-4000-8000-0000000000a1'), 'delete_pending/deleted', 'the file is delete_pending and its name erased');
-select is((select r->>'drive_file_id' from jsonb_array_elements(public.svc_form_files_sweep(10, 'c2100000-0000-4000-8000-000000000006')) r), 'DRIVEFILEHARD0007', 'sweep by member returns the Drive id to delete');
-select is(public.svc_form_files_done(array['c2100000-0000-4000-8000-0000000000a1'::uuid]), 0, 'done keeps the tombstone row of an erased member');
-select is((select drive_file_id is null and deleted_at is not null from public.form_files where id='c2100000-0000-4000-8000-0000000000a1'), true, 'the tombstone has no Drive id');
-select is(jsonb_array_length(public.svc_form_files_sweep(10, 'c2100000-0000-4000-8000-000000000006')), 0, 'a finished tombstone is not swept again');
+set local role service_role;
+select is(public.svc_execute_hard_delete('c2100000-0000-4000-8000-000000000001','c2100000-0000-4000-8000-0000000000b1')->>'form_files', '2', 'hard delete counts both archived files');
+select is((select array_agg(r->>'drive_file_id' order by r->>'drive_file_id') from jsonb_array_elements(public.svc_form_files_sweep(10, 'c2100000-0000-4000-8000-000000000006')) r),
+ array['DRIVEFILEHARD0007','DRIVEFILEHARD0008'], 'sweep returns both archived Drive IDs');
+select is(public.svc_form_files_remaining('c2100000-0000-4000-8000-000000000006'), 2, 'remaining includes claimed work until Drive reconciliation');
+select is(public.svc_form_files_done(array['c2100000-0000-4000-8000-0000000000a1'::uuid,'c2100000-0000-4000-8000-0000000000a2'::uuid]), 2, 'done closes both reconciled erasure records');
+select is(public.svc_form_files_remaining('c2100000-0000-4000-8000-000000000006'), 0, 'completed records leave no remaining work');
+reset role;
 
 select * from finish();
 rollback;

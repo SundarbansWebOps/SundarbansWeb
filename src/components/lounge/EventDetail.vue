@@ -135,22 +135,42 @@
         <p class="evd-sub">
           <b>{{ spanOf(event) }}</b> · {{ until(event.starts_at) }}
         </p>
-        <form class="evd-form" @submit.prevent="submit">
-          <FormFields
+        <form class="evd-form" novalidate @submit.prevent="submit">
+          <FormQuestions
             v-if="regForm"
             ref="fieldsEl"
             v-model:save-phone="savePhone"
-            :fields="regForm.fields || []"
+            :form="regForm"
           />
           <p v-if="error" class="ff-err" role="alert">{{ error }}</p>
           <p class="evd-final">
             Registering is final. It can't be undone, so check the date first.
           </p>
           <div class="evd-acts">
-            <button type="submit" class="gp-btn is-big" :disabled="busy">
+            <button
+              v-if="fieldsEl && !fieldsEl.isLast"
+              type="button"
+              class="gp-btn is-big"
+              :disabled="fieldsEl.uploadsBusy"
+              @click="fieldsEl.next()"
+            >
+              Next
+            </button>
+            <button
+              v-else
+              type="submit"
+              class="gp-btn is-big"
+              :disabled="busy || fieldsEl?.uploadsBusy"
+            >
               {{ busy ? 'Sending…' : 'Register' }}
             </button>
-            <button type="button" class="gp-btn is-ghost" @click="step = 'info'">Back</button>
+            <button
+              type="button"
+              class="gp-btn is-ghost"
+              @click="fieldsEl?.hasPrevious ? fieldsEl.back() : (step = 'info')"
+            >
+              Back
+            </button>
           </div>
         </form>
       </template>
@@ -166,6 +186,7 @@
           <b>{{ event.name }}</b> starts {{ until(event.starts_at) }}. The Join button shows up in
           your Lounge 15 minutes before it starts. Stay 20 minutes and you get a certificate.
         </p>
+        <FormSubmittedFiles v-if="regForm" :form-id="regForm.id" />
         <p v-if="invite" class="ff-invite">
           WhatsApp invite:
           <a :href="invite" target="_blank" rel="noopener noreferrer">Open the group</a>. Request
@@ -186,7 +207,8 @@ import { errorText } from '../../lib/auth.js';
 import { reviewOf } from '../../lib/lounge.js';
 import { img } from '../../lib/events.js';
 import { KITE_MINE, LANTERN } from './home/art.js';
-import FormFields from './FormFields.vue';
+import FormQuestions from './FormQuestions.vue';
+import FormSubmittedFiles from './FormSubmittedFiles.vue';
 import LoungeDialog from './LoungeDialog.vue';
 import {
   ago,
@@ -265,7 +287,8 @@ async function submit() {
     step.value = 'info';
     return;
   }
-  if (!regForm.value || busy.value) return;
+  if (!regForm.value || busy.value || fieldsEl.value?.uploadsBusy) return;
+  if (!fieldsEl.value?.isLast) return fieldsEl.value?.next();
   if (!(await fieldsEl.value?.validate())) return;
   busy.value = true;
   error.value = '';

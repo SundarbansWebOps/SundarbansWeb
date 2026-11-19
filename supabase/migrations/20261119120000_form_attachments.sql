@@ -27,15 +27,42 @@ create table public.form_files (
   status text not null default 'uploading' check (status in ('uploading','ready','attached','delete_pending')),
   created_at timestamptz not null default now(),
   attached_at timestamptz,
-  -- Set when the Drive file of a hard-deleted member is gone (the row stays as a tombstone).
-  deleted_at timestamptz
+  upload_session_url text,
+  next_sweep_at timestamptz not null default '-infinity'
 );
 create index form_files_member_form on public.form_files (member_id, form_id, field_key);
-create index form_files_sweep on public.form_files (created_at) where deleted_at is null and status <> 'attached';
+create index form_files_sweep on public.form_files (created_at) where status <> 'attached';
 alter table public.form_files enable row level security;
 revoke all on public.form_files from public, anon, authenticated, service_role;
 comment on table public.form_files is
   'Member uploads for form file questions; bytes live in the house Drive. Reached only through svc_form_file_* RPCs (Edge Function form-file).';
+
+-- Form deletion keeps the bytes. Preserve only the information needed for later erasure.
+create table private.form_file_erasure (
+  id uuid primary key,
+  member_id uuid not null,
+  drive_file_id text,
+  upload_session_url text,
+  delete_pending boolean not null,
+  next_sweep_at timestamptz not null
+);
+create index form_file_erasure_member on private.form_file_erasure (member_id);
+create index form_file_erasure_sweep on private.form_file_erasure (next_sweep_at) where delete_pending;
+alter table private.form_file_erasure enable row level security;
+revoke all on private.form_file_erasure from public, anon, authenticated, service_role;
+
+create function private.preserve_form_file_erasure() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+ if not exists(select 1 from public.lounge_forms where id = old.form_id) then
+  insert into private.form_file_erasure (id, member_id, drive_file_id, upload_session_url, delete_pending, next_sweep_at)
+  values (old.id, old.member_id, old.drive_file_id, old.upload_session_url, old.status = 'delete_pending', old.next_sweep_at);
+ end if;
+ return old;
+end; $$;
+revoke execute on function private.preserve_form_file_erasure() from public, anon, authenticated, service_role;
+create trigger form_file_preserve_erasure after delete on public.form_files
+for each row execute function private.preserve_form_file_erasure();
 
 -- One-row table: the root "Sundarbans Forms" Drive folder (created lazily by the function).
 create table private.form_drive_root (
@@ -110,22 +137,43 @@ begin
     if coalesce((field->>'required')::boolean,false) then raise exception 'Required field: %',field->>'label' using errcode='22023'; end if;
     continue;
    end if;
-   if jsonb_typeof(val)<>'array' or jsonb_array_length(val)>coalesce((field->>'max_files')::integer,1) or exists(select 1 from jsonb_array_elements(val) x where jsonb_typeof(x)<>'string' or (x#>>'{}') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') then raise exception 'Invalid file answer' using errcode='22023'; end if;
+   if jsonb_typeof(val)<>'array' then raise exception 'Invalid file answer' using errcode='22023'; end if;
+   if jsonb_array_length(val)>coalesce((field->>'max_files')::integer,1) or exists(select 1 from jsonb_array_elements(val) x where jsonb_typeof(x)<>'string' or (x#>>'{}') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') then raise exception 'Invalid file answer' using errcode='22023'; end if;
    select coalesce(array_agg(t::uuid),'{}') into v_ids from jsonb_array_elements_text(val) t;
    if (select count(distinct i) from unnest(v_ids) i)<>cardinality(v_ids) then raise exception 'Invalid file answer' using errcode='22023'; end if;
-   if (select count(*) from public.form_files ff where ff.id=any(v_ids) and ff.member_id=auth.uid() and ff.form_id=f.id and ff.field_key=k and ff.status='ready')<>cardinality(v_ids) then raise exception 'Choose files you uploaded for this question' using errcode='22023'; end if;
+   perform 1 from public.form_files ff
+    where ff.id=any(v_ids) and ff.member_id=auth.uid() and ff.form_id=f.id and ff.field_key=k
+     and ff.status='ready' and ff.created_at >= now() - interval '24 hours'
+     and (field->>'accept'='any' or (field->>'accept'='pdf' and ff.mime='application/pdf')
+          or (field->>'accept'='image' and ff.mime like 'image/%'))
+    order by ff.id for update;
+   get diagnostics n=row_count;
+   if n<>cardinality(v_ids) then raise exception 'Choose available files of the allowed type for this question' using errcode='22023'; end if;
    a:=jsonb_set(a,array[k],(select jsonb_agg(jsonb_build_object('file_id',ff.id,'name',ff.original_name,'mime',ff.mime,'size',ff.size_bytes) order by array_position(v_ids,ff.id)) from public.form_files ff where ff.id=any(v_ids)));
    v_file_ids:=v_file_ids||v_ids;
    continue;
   end if;$a$);
- b := pg_temp.patch_once(b, $a$select id,review_status into rid,v_status from public.form_responses where form_id=f.id and member_id=auth.uid() for update;$a$,
-  $a$select id,review_status into rid,v_status from public.form_responses where form_id=f.id and member_id=auth.uid() for update;
- -- Lock the files being attached and re-check them now that the member lock is held.
- if cardinality(v_file_ids)>0 and (rid is null or v_status='rejected') then
-  perform 1 from public.form_files where id=any(v_file_ids) and member_id=auth.uid() and form_id=f.id and status='ready' for update;
-  get diagnostics n=row_count;
-  if n<>cardinality(v_file_ids) then raise exception 'An uploaded file is no longer available. Remove it and upload it again.' using errcode='22023'; end if;
- end if;$a$);
+ -- Move the existing member lock and response lookup before validation. The form and
+ -- event share locks are already held. A successful replay can reference attached files.
+ b := pg_temp.patch_once(b, $a$
+ -- Serialize per-member writes; repeated submission returns the original response unchanged.
+ perform 1 from public.members where id=auth.uid() for update;
+ -- Region and suspension may have changed while waiting for the member lock. Authorize
+ -- against that committed state; the held member/event/form locks then preserve it.
+ if not private.is_active_member() or not private.can_submit_form(f.id) then raise exception 'This form is closed or outside your audience' using errcode='42501'; end if;
+ select id,review_status into rid,v_status from public.form_responses where form_id=f.id and member_id=auth.uid() for update;
+$a$, E'\n');
+ b := pg_temp.patch_once(b, $a$if jsonb_typeof(a) is distinct from 'object'$a$,
+  $a$-- Serialize per-member writes; repeated submission returns the original response unchanged.
+ perform 1 from public.members where id=auth.uid() for update;
+ -- Region and suspension may have changed while waiting for the member lock. Authorize
+ -- against that committed state; the held member/event/form locks then preserve it.
+ if not private.is_active_member() or not private.can_submit_form(f.id) then raise exception 'This form is closed or outside your audience' using errcode='42501'; end if;
+ select id,review_status into rid,v_status from public.form_responses where form_id=f.id and member_id=auth.uid() for update;
+ if rid is not null and v_status is distinct from 'rejected' then
+  return jsonb_build_object('response_id',rid,'invite_url',public.get_lounge_form_invite(f.id),'registered',f.event_id is not null);
+ end if;
+ if jsonb_typeof(a) is distinct from 'object'$a$);
  b := pg_temp.patch_once(b, $a$if v_wrote and p_save_phone and v_phone is not null then$a$,
   $a$if v_wrote and cardinality(v_file_ids)>0 then
   update public.form_files set status='attached',response_id=rid,attached_at=now() where id=any(v_file_ids);
@@ -147,6 +195,15 @@ begin
  execute b;
 end $patch$;
 
+do $patch$
+declare b text := pg_get_functiondef('public.submit_panbs_registration(uuid,text,text,text,text,jsonb)'::regprocedure);
+begin
+ b := pg_temp.patch_once(b, $a$for field in select value from jsonb_array_elements(f.fields) loop$a$,
+  $a$for field in select value from jsonb_array_elements(f.fields) loop
+    if field->>'type' in ('file','section','page_break') then continue; end if;$a$);
+ execute b;
+end $patch$;
+
 -- ── list_lounge_forms: managers see whether a form holds files ──────────────
 -- (banner_url / banner_alt arrive through to_jsonb(f).)
 do $patch$
@@ -162,11 +219,14 @@ do $patch$
 declare b text := pg_get_functiondef('public.svc_execute_hard_delete(uuid,uuid)'::regprocedure);
 begin
  b := pg_temp.patch_once(b, $a$update public.regional_registrations  set answers = '{}'::jsonb where member_id = v_member.id;$a$,
-  $a$update public.form_files set status = 'delete_pending', original_name = 'deleted' where member_id = v_member.id and deleted_at is null;
+  $a$update public.form_files set status = 'delete_pending', original_name = 'deleted'
+   where member_id = v_member.id;
+  update private.form_file_erasure set delete_pending = true where member_id = v_member.id;
   update public.regional_registrations  set answers = '{}'::jsonb where member_id = v_member.id;$a$);
  b := pg_temp.patch_once(b, $a$return jsonb_build_object('member_id', v_member.id, 'state', 'executed');$a$,
   $a$return jsonb_build_object('member_id', v_member.id, 'state', 'executed',
-    'form_files', (select count(*) from public.form_files where member_id = v_member.id and status = 'delete_pending' and deleted_at is null));$a$);
+    'form_files', (select count(*) from public.form_files where member_id = v_member.id and status = 'delete_pending')
+     + (select count(*) from private.form_file_erasure where member_id = v_member.id and delete_pending));$a$);
  execute b;
 end $patch$;
 
@@ -179,6 +239,28 @@ begin
 end; $$;
 revoke execute on function public.get_form_drive_folder(uuid) from public, anon, authenticated, service_role;
 grant execute on function public.get_form_drive_folder(uuid) to authenticated;
+
+create function public.save_lounge_form_banner(p_form_id uuid, p_url text, p_alt text default null) returns void
+language plpgsql security definer set search_path = '' as $$
+declare oldf public.lounge_forms; newf public.lounge_forms;
+begin
+ perform pg_advisory_xact_lock(hashtextextended('form:' || p_form_id::text, 0));
+ select * into oldf from public.lounge_forms where id = p_form_id for update;
+ if not found then raise exception 'Form not found' using errcode = 'no_data_found'; end if;
+ perform 1 from public.events where id = oldf.event_id for share;
+ if not private.is_active_member() or private.manages_form(p_form_id) is not true then
+  raise exception 'This form is outside your organizer scope' using errcode = '42501';
+ end if;
+ update public.lounge_forms
+ set banner_url = nullif(btrim(p_url), ''),
+     banner_alt = case when p_url is null then banner_alt else nullif(btrim(p_alt), '') end,
+     updated_at = now()
+ where id = p_form_id returning * into newf;
+ perform private.write_audit('form.save', 'lounge_forms', p_form_id::text, to_jsonb(oldf),
+   jsonb_build_object('id', p_form_id, 'banner_url', newf.banner_url, 'banner_alt', newf.banner_alt));
+end; $$;
+revoke execute on function public.save_lounge_form_banner(uuid, text, text) from public, anon, authenticated, service_role;
+grant execute on function public.save_lounge_form_banner(uuid, text, text) to authenticated;
 
 -- ── svc_* RPCs for the Edge Functions (service role only) ───────────────────
 -- Each impersonates the verified caller (as svc_event_image_target does) so the site's own checks run.
@@ -196,8 +278,7 @@ begin
  return jsonb_build_object('form_id', p_form_id);
 end; $$;
 
--- Start an upload: every check, then one 'uploading' row. Counting happens under an advisory lock
--- per member+form+field so parallel starts cannot exceed max_files.
+-- Match submit's form → event → member lock order, including the member-wide quota.
 create function public.svc_form_file_start(p_actor uuid, p_form_id uuid, p_field_key text, p_name text, p_mime text, p_size bigint) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -207,21 +288,24 @@ begin
  perform set_config('request.jwt.claims', jsonb_build_object('sub', p_actor, 'role', 'authenticated')::text, true);
  if not private.is_active_member() then raise exception 'Account is not active' using errcode = '42501'; end if;
  if p_mime is null or p_mime not in ('image/webp','image/jpeg','image/png','application/pdf') then raise exception 'This file type is not allowed' using errcode = '22023'; end if;
- if p_size is null or p_size < 1 or p_size > case when p_mime = 'application/pdf' then 10485760 else 5242880 end then raise exception 'This file is too large' using errcode = '22023'; end if;
- select * into f from public.lounge_forms where id = p_form_id;
- if not found or not private.can_submit_form(f.id) then raise exception 'This form is closed or outside your audience' using errcode = '42501'; end if;
+ if p_size is null or p_size < 1 or p_size > (case when p_mime = 'application/pdf' then 10485760 else 5242880 end) then raise exception 'This file is too large' using errcode = '22023'; end if;
+ select * into f from public.lounge_forms where id = p_form_id for share;
+ if not found then raise exception 'This form is closed or outside your audience' using errcode = '42501'; end if;
+ if f.event_id is not null then perform 1 from public.events where id = f.event_id for share; end if;
+ select email into v_email from public.members where id = p_actor for update;
+ if not private.is_active_member() or not private.can_submit_form(f.id) then raise exception 'This form is closed or outside your audience' using errcode = '42501'; end if;
  select x into fld from jsonb_array_elements(f.fields) x where x->>'key' = p_field_key and x->>'type' = 'file';
  if fld is null then raise exception 'This question does not take files' using errcode = '22023'; end if;
  v_accept := fld->>'accept'; v_max := coalesce((fld->>'max_files')::integer, 1);
  if (v_accept = 'image' and p_mime = 'application/pdf') or (v_accept = 'pdf' and p_mime <> 'application/pdf') then raise exception 'This question does not accept that kind of file' using errcode = '22023'; end if;
- perform pg_advisory_xact_lock(hashtextextended('form_file:' || p_actor::text || ':' || p_form_id::text || ':' || p_field_key, 0));
  -- A rejected application is corrected in place (submit_lounge_form), so it may attach new files.
  select review_status into v_rev from public.form_responses where form_id = p_form_id and member_id = p_actor;
  if found and v_rev <> 'rejected' then raise exception 'You have already submitted this form' using errcode = 'PT409'; end if;
+ update public.form_files set status = 'delete_pending' where member_id = p_actor
+   and status in ('uploading','ready') and created_at < now() - interval '24 hours';
  select count(*) into v_n from public.form_files where member_id = p_actor and form_id = p_form_id and field_key = p_field_key and status in ('uploading','ready');
  if v_n >= v_max then raise exception 'You can attach at most % file(s) to this question', v_max using errcode = '22023'; end if;
  if (select count(*) from public.form_files where member_id = p_actor and status in ('uploading','ready')) >= 50 then raise exception 'Too many pending uploads; submit a form or remove some files' using errcode = '22023'; end if;
- select email into v_email from public.members where id = p_actor;
  v_ext := case p_mime when 'image/webp' then 'webp' when 'image/jpeg' then 'jpg' when 'image/png' then 'png' else 'pdf' end;
  insert into public.form_files(id, form_id, field_key, member_id, original_name, mime, size_bytes) values (v_id, p_form_id, p_field_key, p_actor, v_name, p_mime, p_size);
  return jsonb_build_object('file_id', v_id, 'form_id', p_form_id, 'name', v_name,
@@ -230,6 +314,43 @@ begin
    'root_id', (select folder_id from private.form_drive_root),
    'folder_id', (select folder_id from private.form_drive_folders where form_id = p_form_id));
 end; $$;
+
+-- Persist the session before exposing its URL. Recheck authorization after the Drive calls.
+create function public.svc_form_file_session(p_actor uuid, p_file_id uuid, p_drive_file_id text, p_url text) returns void
+language plpgsql security definer set search_path = '' as $$
+declare f public.lounge_forms; r public.form_files;
+begin
+ perform set_config('request.jwt.claims', jsonb_build_object('sub', p_actor, 'role', 'authenticated')::text, true);
+ select * into r from public.form_files where id = p_file_id and member_id = p_actor;
+ if not found then raise exception 'This upload can no longer be started' using errcode = 'PT409'; end if;
+ select * into f from public.lounge_forms where id = r.form_id for share;
+ if f.event_id is not null then perform 1 from public.events where id = f.event_id for share; end if;
+ perform 1 from public.members where id = p_actor for update;
+ if not private.is_active_member() or not private.can_submit_form(f.id) then
+  raise exception 'This form is closed or outside your audience' using errcode = '42501';
+ end if;
+ if not exists(select 1 from jsonb_array_elements(f.fields) x where x->>'key' = r.field_key
+     and x->>'type' = 'file' and (x->>'accept' = 'any'
+          or (x->>'accept' = 'pdf' and r.mime = 'application/pdf')
+          or (x->>'accept' = 'image' and r.mime like 'image/%')))
+    or exists(select 1 from public.form_responses where form_id = f.id and member_id = p_actor and review_status <> 'rejected')
+ then raise exception 'This upload can no longer be started' using errcode = 'PT409'; end if;
+ update public.form_files set drive_file_id = p_drive_file_id, upload_session_url = p_url
+ where id = p_file_id and member_id = p_actor and status = 'uploading' and drive_file_id is null
+   and created_at >= now() - interval '24 hours';
+ if not found then raise exception 'This upload can no longer be started' using errcode = 'PT409'; end if;
+end; $$;
+
+-- Only metadata for the caller's pending files is returned. Interrupted uploads can be removed.
+create function public.svc_form_file_list(p_actor uuid, p_form_id uuid) returns jsonb
+language sql security definer set search_path = '' as $$
+ select coalesce(jsonb_agg(jsonb_build_object('file_id',id,'field_key',field_key,'name',original_name,
+   'mime',mime,'size',size_bytes,'status',status) order by created_at,id), '[]'::jsonb)
+ from public.form_files
+ where member_id = p_actor and form_id = p_form_id and status in ('uploading','ready')
+   and created_at >= now() - interval '24 hours'
+   and exists(select 1 from public.members m where m.id = p_actor and m.account_status = 'active' and m.deleted_at is null);
+$$;
 
 -- First writer wins; the loser deletes its own (empty) Drive folder and uses the returned id.
 create function public.svc_form_drive_root_set(p_folder_id text) returns text
@@ -250,7 +371,7 @@ create function public.svc_form_file_finish_target(p_actor uuid, p_file_id uuid)
 language plpgsql security definer set search_path = '' as $$
 declare r public.form_files;
 begin
- select * into r from public.form_files where id = p_file_id and member_id = p_actor and deleted_at is null for update;
+ select * into r from public.form_files where id = p_file_id and member_id = p_actor for update;
  if not found then raise exception 'File not found' using errcode = 'no_data_found'; end if;
  if r.status not in ('uploading','ready') then raise exception 'This file can no longer be changed' using errcode = 'PT409'; end if;
  return jsonb_build_object('file_id', r.id, 'form_id', r.form_id, 'mime', r.mime, 'size_bytes', r.size_bytes, 'status', r.status,
@@ -261,25 +382,26 @@ create function public.svc_form_file_finish_ok(p_actor uuid, p_file_id uuid, p_d
 language plpgsql security definer set search_path = '' as $$
 declare r public.form_files;
 begin
- select * into r from public.form_files where id = p_file_id and member_id = p_actor and deleted_at is null for update;
+ select * into r from public.form_files where id = p_file_id and member_id = p_actor for update;
  if not found then raise exception 'File not found' using errcode = 'no_data_found'; end if;
  if r.status = 'ready' and r.drive_file_id = p_drive_file_id then null;
- elsif r.status = 'uploading' then update public.form_files set status = 'ready', drive_file_id = p_drive_file_id where id = r.id;
+ elsif r.status = 'uploading' and (r.drive_file_id is null or r.drive_file_id = p_drive_file_id) then
+  update public.form_files set status = 'ready', drive_file_id = p_drive_file_id, upload_session_url = null where id = r.id;
  else raise exception 'This file can no longer be changed' using errcode = 'PT409'; end if;
  return jsonb_build_object('file_id', r.id, 'name', r.original_name, 'mime', r.mime, 'size', r.size_bytes);
 end; $$;
 
--- Discard (remove button, failed verification, failed session): queue the caller's own,
--- not-yet-attached file for deletion. delete_pending rows can no longer be attached.
-create function public.svc_form_file_discard(p_actor uuid, p_file_id uuid) returns jsonb
+-- Verification failure can only queue an uploading row. Explicit removal may queue a ready row.
+create function public.svc_form_file_discard(p_actor uuid, p_file_id uuid, p_uploading_only boolean default false) returns boolean
 language plpgsql security definer set search_path = '' as $$
-declare r public.form_files;
+declare v_status text;
 begin
- select * into r from public.form_files where id = p_file_id and member_id = p_actor and deleted_at is null for update;
- if not found then raise exception 'File not found' using errcode = 'no_data_found'; end if;
- if r.status = 'attached' then raise exception 'A submitted file cannot be removed' using errcode = 'PT409'; end if;
- update public.form_files set status = 'delete_pending' where id = r.id;
- return jsonb_build_object('file_id', r.id, 'drive_file_id', r.drive_file_id);
+ select status into v_status from public.form_files where id = p_file_id and member_id = p_actor for update;
+ if p_uploading_only and v_status is distinct from 'uploading' then return false; end if;
+ if not found then return false; end if;
+ if v_status = 'attached' then raise exception 'A submitted file cannot be removed' using errcode = 'PT409'; end if;
+ update public.form_files set status = 'delete_pending' where id = p_file_id;
+ return true;
 end; $$;
 
 -- View: only people who manage the form, only submitted files.
@@ -288,42 +410,61 @@ language plpgsql security definer set search_path = '' as $$
 declare r public.form_files;
 begin
  perform set_config('request.jwt.claims', jsonb_build_object('sub', p_actor, 'role', 'authenticated')::text, true);
- select * into r from public.form_files where id = p_file_id and deleted_at is null;
+ select * into r from public.form_files where id = p_file_id;
  if not found or r.status <> 'attached' or r.drive_file_id is null then raise exception 'File not found' using errcode = 'no_data_found'; end if;
  if not private.is_active_member() or private.manages_form(r.form_id) is not true then raise exception 'This file is outside your organizer scope' using errcode = '42501'; end if;
  return jsonb_build_object('file_id', r.id, 'drive_file_id', r.drive_file_id, 'mime', r.mime, 'name', r.original_name, 'size', r.size_bytes);
 end; $$;
 
--- Sweep: claim up to p_limit rows to delete (abandoned > 24 h, or already delete_pending). Claimed
--- rows become delete_pending in the same statement so a concurrent submit cannot attach them.
--- With p_member_id only that member's delete_pending rows are returned (hard delete).
-create function public.svc_form_files_sweep(p_limit integer default 10, p_member_id uuid default null) returns jsonb
+-- Claim rows before any Drive calls. A short retry interval lets other work progress
+-- even if a session is still live, a worker exits, or a Drive request fails.
+create function public.svc_form_files_sweep(p_limit integer default 10, p_member_id uuid default null, p_file_id uuid default null) returns jsonb
 language sql security definer set search_path = '' as $$
- with picked as (
+ with live as (
   select id from public.form_files
-  where deleted_at is null
-    and case when p_member_id is null
-         then status = 'delete_pending' or (status in ('uploading','ready') and created_at < now() - interval '24 hours')
-         else member_id = p_member_id and status = 'delete_pending' end
-  order by created_at
+  where next_sweep_at <= clock_timestamp()
+    and (p_file_id is null or id = p_file_id)
+    and (p_member_id is null or member_id = p_member_id)
+    and (status = 'delete_pending' or (p_member_id is null and p_file_id is null
+      and status in ('uploading','ready') and created_at < now() - interval '24 hours'))
+  order by next_sweep_at, created_at, id
   limit greatest(1, least(coalesce(p_limit, 10), 200))
-  for update skip locked),
- claimed as (
-  update public.form_files f set status = 'delete_pending' from picked where f.id = picked.id
-  returning f.id, f.drive_file_id)
- select coalesce(jsonb_agg(jsonb_build_object('id', id, 'drive_file_id', drive_file_id)), '[]'::jsonb) from claimed;
+  for update skip locked
+ ), claimed as (
+  update public.form_files f set status = 'delete_pending', next_sweep_at = clock_timestamp() + interval '2 minutes'
+  from live where f.id = live.id returning f.id, f.drive_file_id, f.upload_session_url
+ ), archived as (
+  select id from private.form_file_erasure
+  where delete_pending and next_sweep_at <= clock_timestamp()
+    and (p_file_id is null or id = p_file_id)
+    and (p_member_id is null or member_id = p_member_id)
+  order by next_sweep_at, id
+  limit (select greatest(0, greatest(1, least(coalesce(p_limit, 10), 200)) - count(*)) from claimed)
+  for update skip locked
+ ), archived_claimed as (
+  update private.form_file_erasure f set next_sweep_at = clock_timestamp() + interval '2 minutes'
+  from archived where f.id = archived.id returning f.id, f.drive_file_id, f.upload_session_url
+ )
+ select coalesce(jsonb_agg(to_jsonb(rows)), '[]'::jsonb)
+ from (select * from claimed union all select * from archived_claimed) rows;
 $$;
 
--- After Drive deletion: remove the rows, except a hard-deleted member's, which stay as tombstones.
+create function public.svc_form_files_remaining(p_member_id uuid) returns integer
+language sql security definer set search_path = '' as $$
+ select (select count(*) from public.form_files where member_id = p_member_id and status = 'delete_pending')
+      + (select count(*) from private.form_file_erasure where member_id = p_member_id and delete_pending);
+$$;
+
+-- Separate statements let an erasure moved by a concurrent form delete still be reconciled.
 create function public.svc_form_files_done(p_ids uuid[]) returns integer
 language plpgsql security definer set search_path = '' as $$
-declare n integer;
+declare n integer; m integer;
 begin
- update public.form_files f set drive_file_id = null, deleted_at = now()
-  where f.id = any(p_ids) and f.status = 'delete_pending' and exists(select 1 from public.members m where m.id = f.member_id and m.anonymised_at is not null);
- delete from public.form_files f where f.id = any(p_ids) and f.status = 'delete_pending' and f.deleted_at is null;
+ delete from public.form_files where id = any(p_ids) and status = 'delete_pending';
  get diagnostics n = row_count;
- return n;
+ delete from private.form_file_erasure where id = any(p_ids) and delete_pending;
+ get diagnostics m = row_count;
+ return n + m;
 end; $$;
 
 revoke execute on function
@@ -333,9 +474,12 @@ revoke execute on function
  public.svc_form_drive_folder_set(uuid, text),
  public.svc_form_file_finish_target(uuid, uuid),
  public.svc_form_file_finish_ok(uuid, uuid, text),
- public.svc_form_file_discard(uuid, uuid),
+ public.svc_form_file_discard(uuid, uuid, boolean),
+ public.svc_form_file_session(uuid, uuid, text, text),
+ public.svc_form_file_list(uuid, uuid),
  public.svc_form_file_view_target(uuid, uuid),
- public.svc_form_files_sweep(integer, uuid),
+ public.svc_form_files_sweep(integer, uuid, uuid),
+ public.svc_form_files_remaining(uuid),
  public.svc_form_files_done(uuid[])
  from public, anon, authenticated;
 grant execute on function
@@ -345,8 +489,11 @@ grant execute on function
  public.svc_form_drive_folder_set(uuid, text),
  public.svc_form_file_finish_target(uuid, uuid),
  public.svc_form_file_finish_ok(uuid, uuid, text),
- public.svc_form_file_discard(uuid, uuid),
+ public.svc_form_file_discard(uuid, uuid, boolean),
+ public.svc_form_file_session(uuid, uuid, text, text),
+ public.svc_form_file_list(uuid, uuid),
  public.svc_form_file_view_target(uuid, uuid),
- public.svc_form_files_sweep(integer, uuid),
+ public.svc_form_files_sweep(integer, uuid, uuid),
+ public.svc_form_files_remaining(uuid),
  public.svc_form_files_done(uuid[])
  to service_role;
