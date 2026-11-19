@@ -10,49 +10,58 @@
   - Every loop is CSS, so it pauses with the hero off screen (.m-off), in a hidden tab and
     under the sign-in door (html.m-hidden), and resumes from where it was: no burst.
   - Reduced motion and lite: no falling snow; the mist and a few flakes stay, still.
+  - Night: snow shows where light catches it. A still mask (--lights) keeps it faint in the
+    dark and full near the moon, the lanterns on the water, your lantern, the boat's lamp and
+    the village along the bank. The mask is recomputed only on resize, never per frame.
   Colours follow the theme through tokens only, so a theme switch repaints the layers once
   and never restarts them.
 -->
 <template>
-  <div class="winter" aria-hidden="true">
+  <div ref="root" class="winter" aria-hidden="true">
     <div class="mist"></div>
-    <i
-      v-for="(t, i) in TILES"
-      :key="`t${i}`"
-      class="tile"
-      :style="{
-        '--tile': `${t.size}px`,
-        '--d': `${t.d}s`,
-        '--sw': `${t.sw}px`,
-        '--sd': `${t.sd}s`,
-        opacity: t.o,
-        backgroundImage: t.image,
-        backgroundSize: `${t.size}px ${t.size}px`,
-      }"
-    ></i>
-    <i
-      v-for="(f, i) in near"
-      :key="i"
-      class="flake"
-      :style="{
-        left: `${f.x}%`,
-        width: `${f.z}px`,
-        opacity: f.a,
-        '--p': f.p,
-        '--d': `${f.d}s`,
-        '--o': `${f.o}s`,
-        '--sw': `${f.sw}px`,
-        '--sd': `${f.sd}s`,
-        '--so': `${f.so}s`,
-      }"
-    ></i>
+    <div class="fall" :style="{ '--lights': lights }">
+      <i
+        v-for="(t, i) in TILES"
+        :key="`t${i}`"
+        class="tile"
+        :style="{
+          '--tile': `${t.size}px`,
+          '--d': `${t.d}s`,
+          '--sw': `${t.sw}px`,
+          '--sd': `${t.sd}s`,
+          opacity: t.o,
+          backgroundImage: t.image,
+          backgroundSize: `${t.size}px ${t.size}px`,
+        }"
+      ></i>
+      <i
+        v-for="(f, i) in near"
+        :key="i"
+        class="flake"
+        :style="{
+          left: `${f.x}%`,
+          width: `${f.z}px`,
+          opacity: f.a,
+          '--p': f.p,
+          '--d': `${f.d}s`,
+          '--o': `${f.o}s`,
+          '--sw': `${f.sw}px`,
+          '--sd': `${f.sd}s`,
+          '--so': `${f.so}s`,
+        }"
+      ></i>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
-const props = defineProps({ phone: { type: Boolean, default: false } });
+const props = defineProps({
+  phone: { type: Boolean, default: false },
+  /* Everyone else's lanterns (HomeWorld's fleet): nx/ny on the water, nw width in px. */
+  fleet: { type: Array, default: () => [] },
+});
 
 /* The same fixed sequence as HomeWorld's sky: the snow is the same on every visit. */
 function seq(seed) {
@@ -101,6 +110,76 @@ const near = computed(() => {
     };
   });
 });
+
+/* ---------- Night: where the light falls ---------- */
+
+/* A pool of light in the mask: full at the source, gone by r. */
+const pool = (x, y, r) =>
+  `radial-gradient(circle ${r} at ${x} ${y}, var(--lit), var(--lit-half) 42%, transparent)`;
+
+/* Your lantern and the boat sit in LoungeHome's layout; their resting boxes are read from
+   offsets (which ignore transforms, so the day lift and the boat's glide don't move them). */
+const root = ref(null);
+const placed = ref(null);
+function offset(el) {
+  let x = 0;
+  let y = 0;
+  for (let n = el; n; n = n.offsetParent) {
+    x += n.offsetLeft;
+    y += n.offsetTop;
+  }
+  return { x, y };
+}
+function measure() {
+  const me = root.value;
+  const hero = me?.closest('.hero');
+  if (!hero) return;
+  const at = offset(me);
+  const box = (sel) => {
+    const el = hero.querySelector(sel);
+    if (!el) return null;
+    const o = offset(el);
+    return { x: o.x - at.x, y: o.y - at.y, w: el.offsetWidth };
+  };
+  placed.value = { mine: box('.h-mine'), boat: box('.h-boat') };
+}
+let ro = null;
+onMounted(() => {
+  measure();
+  const hero = root.value?.closest('.hero');
+  if (hero && 'ResizeObserver' in window) {
+    ro = new ResizeObserver(measure);
+    ro.observe(hero);
+  }
+});
+onBeforeUnmount(() => ro?.disconnect());
+
+const lights = computed(() => {
+  const px = (v) => `${Math.round(v)}px`;
+  const pools = [
+    /* The moon (--sx/--sy/--ss from LoungeHome) and the lit village along the bank. */
+    pool('var(--sx)', 'var(--sy)', 'calc(var(--ss) * 3)'),
+    'linear-gradient(transparent calc(var(--hz) - 90px), var(--lit-half) var(--hz), transparent calc(var(--hz) + 70px))',
+    ...props.fleet.map((f) =>
+      pool(
+        `calc(var(--hw) * ${f.nx})`,
+        `calc(var(--hz) + (var(--hh) - var(--hz)) * ${f.ny})`,
+        px(f.nw * 3.2)
+      )
+    ),
+  ];
+  const { mine, boat } = placed.value || {};
+  /* Lantern centre: LoungeHome's --mcy (0.647 of its width below its top). */
+  if (mine)
+    pools.push(pool(px(mine.x + mine.w / 2), px(mine.y + mine.w * 0.647), px(mine.w * 1.5)));
+  /* The boat's lamp (art.js BOAT.lamp) on an 800x328 sprite. */
+  if (boat)
+    pools.push(
+      pool(px(boat.x + boat.w * 0.585), px(boat.y + boat.w * 0.41 * 0.212), px(boat.w * 0.75))
+    );
+  /* Last: the faint snow everywhere else. */
+  return [...pools, 'linear-gradient(var(--dark-snow), var(--dark-snow))'].join(',');
+});
 </script>
 
 <style scoped>
@@ -115,9 +194,26 @@ const near = computed(() => {
   pointer-events: none;
 }
 :root[data-theme='dark'] .winter {
-  --snow: var(--t-1);
+  /* Night snow is only seen where lamplight or the moon catches it (.fall), so it takes
+     their warm cream. */
+  --snow: color-mix(in srgb, var(--lamp-core) 55%, var(--t-1));
   --snow-rim: color-mix(in srgb, var(--t-1) 35%, transparent);
   --mist: color-mix(in srgb, var(--t-2) 26%, transparent);
+}
+
+/* ---------- Night: snow only where the light catches it ---------- */
+/* Mask layers add up: each light's pool over a faint floor. Only the mask's alpha counts,
+   so the colour token is incidental. Day keeps the full snowfall. */
+.fall {
+  --lit: var(--t-1);
+  --lit-half: color-mix(in srgb, var(--t-1) 60%, transparent);
+  --dark-snow: color-mix(in srgb, var(--t-1) 10%, transparent);
+  position: absolute;
+  inset: 0;
+}
+:root[data-theme='dark'] .fall {
+  -webkit-mask-image: var(--lights);
+  mask-image: var(--lights);
 }
 
 /* ---------- Mist: a still band lying on the water under the far bank ---------- */

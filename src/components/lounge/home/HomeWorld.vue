@@ -96,7 +96,7 @@
     </div>
 
     <!-- Winter (season.js): mist on the water and falling snow, under everyone's lights. -->
-    <WinterLayer v-if="winter" :phone="phone" />
+    <WinterLayer v-if="winter" :phone="phone" :fleet="fleet" />
 
     <!-- Everyone else: lanterns far out on the water by night, kites in the sky by day. -->
     <div class="fleet" :class="{ 'fleet-turn': fleetTurning }" aria-hidden="true">
