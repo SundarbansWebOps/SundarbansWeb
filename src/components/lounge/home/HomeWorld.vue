@@ -1,10 +1,11 @@
 <!--
   Home's painted world, behind everything: the plate, the sky (stars, shooting stars, moon;
   by day the sun with its turning rays, clouds, birds), the water's light (the moon's or the
-  sun's path, glints on the painted wave line) and everyone else's lanterns, which lift off
-  the water and become kites by day. All positions come from CSS variables set on the hero
-  by LoungeHome (--hw/--hh hero size, --pw/--ph/--ox plate box, --hz horizon, --sx/--sy/--ss
-  sun or moon centre and size, all px). Spec: _notes/motion.md, "Home".
+  sun's path, glints on the painted wave line), winter's snow and mist (WinterLayer.vue, in
+  season only) and everyone else's lanterns, which lift off the water and become kites by
+  day. All positions come from CSS variables set on the hero by LoungeHome (--hw/--hh hero
+  size, --pw/--ph/--ox plate box, --hz horizon, --sx/--sy/--ss sun or moon centre and size,
+  all px). Spec: _notes/motion.md, "Home".
 -->
 <template>
   <div class="world" :class="{ phone }">
@@ -94,6 +95,9 @@
       ></i>
     </div>
 
+    <!-- Winter (season.js): mist on the water and falling snow, under everyone's lights. -->
+    <WinterLayer v-if="winter" :phone="phone" :fleet="fleet" />
+
     <!-- Everyone else: lanterns far out on the water by night, kites in the sky by day. -->
     <div class="fleet" :class="{ 'fleet-turn': fleetTurning }" aria-hidden="true">
       <span
@@ -147,6 +151,8 @@ import { mode } from '../state.js';
 import { fadeReady } from '../tide.js';
 import { BIRDS, CLOUDS, KITES, LANTERN_FAR, MOON, PLATE, SUN } from './art.js';
 import { animate, motionTimeout, motionActive, lite, rare, reduced } from './motion.js';
+import { winter } from './season.js';
+import WinterLayer from './WinterLayer.vue';
 
 const props = defineProps({
   phone: { type: Boolean, default: false },
