@@ -137,7 +137,7 @@
           </figure>
           <div class="adm-form">
             <label class="adm-field wide">
-              <span>Banner description (alt text, optional)</span>
+              <span>Banner alt text (optional)</span>
               <input v-model.trim="form.banner_alt" class="adm-input" maxlength="300" />
               <small>Read aloud by screen readers. Leave empty if the picture is decoration.</small>
             </label>
