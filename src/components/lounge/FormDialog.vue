@@ -1,7 +1,7 @@
 <!-- Member form in the existing Lounge paper dialog. -->
 <template>
   <LoungeDialog ref="dlg" labelledby="ff-h" @close="emit('close')">
-    <form class="evd-form" @submit.prevent="send">
+    <form class="evd-form" novalidate @submit.prevent="send">
       <p class="gp-kicker">{{ kicker }}</p>
       <h2 id="ff-h" class="evd-h">{{ form.group_label || form.title }}</h2>
       <p v-if="form.group_purpose || form.description" class="evd-desc">
@@ -22,13 +22,14 @@
       <p v-if="locked && !isSuperAdmin && !invite" class="evd-done">
         Your application is saved. Sending this form is not WhatsApp admission.
       </p>
-      <FormFields
-        v-else-if="canViewFields"
+      <FormQuestions
+        v-if="canViewFields"
         ref="fieldsEl"
         v-model:save-phone="savePhone"
-        :fields="form.fields || []"
+        :form="form"
         :disabled="previewOnly || locked || done || (rejected && !canSubmit)"
       />
+      <FormSubmittedFiles v-if="locked || done" :form-id="form.id" />
       <p v-if="previewOnly" class="evd-plain" role="status">
         Preview only. {{ unavailableMessage }}
       </p>
@@ -46,10 +47,27 @@
       </p>
       <div class="evd-acts">
         <button
-          v-if="!locked && !done && canSubmit"
+          v-if="fieldsEl?.hasPrevious"
+          type="button"
+          class="gp-btn is-ghost"
+          @click="fieldsEl.back()"
+        >
+          Back
+        </button>
+        <button
+          v-if="fieldsEl && !fieldsEl.isLast"
+          type="button"
+          class="gp-btn is-big"
+          :disabled="fieldsEl.uploadsBusy"
+          @click="fieldsEl.next()"
+        >
+          Next
+        </button>
+        <button
+          v-if="!locked && !done && canSubmit && fieldsEl?.isLast"
           type="submit"
           class="gp-btn is-big"
-          :disabled="busy"
+          :disabled="busy || fieldsEl.uploadsBusy"
         >
           {{ busy ? 'Sending…' : rejected ? 'Send again' : submitLabel }}
         </button>
@@ -62,7 +80,7 @@
           >Open WhatsApp invite <span aria-hidden="true">→</span></a
         >
         <button type="button" class="gp-btn is-ghost" @click="dlg?.close()">
-          {{ done || locked ? 'Back to the river' : 'Back' }}
+          {{ done || locked ? 'Back to the river' : 'Close' }}
         </button>
       </div>
     </form>
@@ -74,7 +92,8 @@ import { computed, ref } from 'vue';
 import { errorText, isSuperAdmin } from '../../lib/auth.js';
 import { formUnavailableMessage, isLocked, reviewOf } from '../../lib/lounge.js';
 import { member } from './fixtures.js';
-import FormFields from './FormFields.vue';
+import FormQuestions from './FormQuestions.vue';
+import FormSubmittedFiles from './FormSubmittedFiles.vue';
 import LoungeDialog from './LoungeDialog.vue';
 import { fetchInvite, submitLoungeForm } from './session.js';
 
@@ -93,7 +112,9 @@ const locked = computed(() => isLocked(props.form));
 const rejected = computed(() => !done.value && reviewOf(props.form) === 'rejected');
 const canSubmit = computed(() => props.form.accepting_responses ?? props.form.is_open ?? false);
 const previewOnly = computed(() => isSuperAdmin.value && !canSubmit.value);
-const canViewFields = computed(() => canSubmit.value || isSuperAdmin.value);
+const canViewFields = computed(
+  () => !locked.value && !done.value && (canSubmit.value || isSuperAdmin.value)
+);
 const unavailableMessage = computed(() =>
   formUnavailableMessage(props.form, member.region_id, member.cohort)
 );
@@ -104,7 +125,8 @@ const error = ref('');
 const invite = ref('');
 
 async function send() {
-  if (busy.value || locked.value || !canSubmit.value) return;
+  if (busy.value || locked.value || !canSubmit.value || fieldsEl.value?.uploadsBusy) return;
+  if (!fieldsEl.value?.isLast) return fieldsEl.value?.next();
   if (!(await fieldsEl.value?.validate())) return;
   busy.value = true;
   error.value = '';

@@ -59,6 +59,13 @@ const routes = [
     component: () => import('../pages/AdminPage.vue'),
     meta: { member: true, admin: true },
   },
+  // One uploaded form file, opened from a response's file link (manager only).
+  {
+    path: '/admin/files/:fileId',
+    name: 'AdminFile',
+    component: () => import('../pages/AdminFilePage.vue'),
+    meta: { member: true, admin: true },
+  },
   { path: '/login', name: 'Login', component: () => import('../pages/LoginPage.vue') },
   { path: '/help', component: () => import('../pages/HelpPage.vue') },
   { path: '/verify-certificate', component: () => import('../pages/VerifyPage.vue') },

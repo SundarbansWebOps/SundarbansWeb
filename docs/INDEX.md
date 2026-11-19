@@ -31,6 +31,7 @@
 | specs/004-event-audience-posters.md                                                    | Spec 004 — event posters (Cloudinary, signed), Public/Members-only audience, RC house-wide approval                                                          |
 | specs/005-admin-lounge-ux.md                                                           | Spec 005 — Admin roster clarity, requests, forms and dashboard UX corrections                                                                                |
 | specs/007-panbs-events.md | Spec 007 — PANBS events: open to all IITM BS, public registration on the event page, guests kept apart |
+| specs/008-form-attachments-pages.md | Spec 008 — form file uploads to private webadmin Drive, Cloudinary banner, section headers, Next/Back pages |
 | specs/001-tickets.md                                                                   | Spec 001 — ticket list + **live status board** (T-01…T-29)                                                                                                   |
 | reports/2026-10-10-sky-motion.md                                                       | Primary-source bird/cloud motion research and scene-specific animation choices                                                                               |
 | reports/2026-10-10-audit-fixes.md                                                      | Implemented non-certificate corrections, independent review, final local gates and remaining source/policy limits                                            |

@@ -127,6 +127,46 @@
           </div>
         </section>
 
+        <section class="grp" aria-labelledby="form-banner-heading">
+          <h3 id="form-banner-heading" class="adm-kicker">Banner</h3>
+          <p class="adm-note">
+            Shown full width above the title. Save the form once before you add a banner.
+          </p>
+          <figure v-if="form.banner_url" class="banner-preview">
+            <img :src="form.banner_url" :alt="form.banner_alt || ''" />
+          </figure>
+          <div class="adm-form">
+            <label class="adm-field wide">
+              <span>Banner alt text (optional)</span>
+              <input v-model.trim="form.banner_alt" class="adm-input" maxlength="300" />
+              <small>Read aloud by screen readers. Leave empty if the picture is decoration.</small>
+            </label>
+          </div>
+          <div class="adm-chips">
+            <button
+              type="button"
+              class="adm-btn ghost small"
+              :disabled="!form.id || bannerBusy"
+              @click="bannerInput?.click()"
+            >
+              {{ form.banner_url ? 'Replace banner' : 'Upload banner' }}
+            </button>
+            <button
+              v-if="form.banner_url"
+              type="button"
+              class="adm-btn danger small"
+              :disabled="bannerBusy"
+              @click="removeBanner"
+            >
+              Remove banner
+            </button>
+            <input ref="bannerInput" type="file" accept="image/*" hidden @change="onBannerPick" />
+          </div>
+          <p v-if="bannerBusy" class="adm-note" role="status">Uploading the banner…</p>
+          <p v-else-if="bannerNotice" class="adm-msg" role="status">{{ bannerNotice }}</p>
+          <p v-if="bannerError" class="adm-msg err" role="alert">{{ bannerError }}</p>
+        </section>
+
         <section class="grp" aria-labelledby="form-audience-heading">
           <h3 id="form-audience-heading" class="adm-kicker">Who sees it</h3>
           <div class="adm-form">
@@ -248,10 +288,11 @@
         <section class="grp" aria-labelledby="form-questions-heading">
           <h3 id="form-questions-heading" class="adm-kicker">Questions</h3>
           <p class="adm-note">Students answer in this order.</p>
+          <p v-if="layoutProblem" class="adm-msg err" aria-live="polite">{{ layoutProblem }}</p>
           <ol class="questions">
             <li v-for="(field, i) in form.fields" :key="field._id" class="adm-card question">
               <div class="question-head">
-                <span class="adm-kicker">Question {{ i + 1 }}</span>
+                <span class="adm-kicker">{{ blockKind(field) }}</span>
                 <div class="adm-chips">
                   <button
                     type="button"
@@ -280,20 +321,33 @@
               </div>
               <div class="adm-form">
                 <label class="adm-field wide">
-                  <span>Question</span>
+                  <span>{{
+                    field.type === 'section'
+                      ? 'Heading'
+                      : field.type === 'page_break'
+                        ? 'Page name'
+                        : 'Question'
+                  }}</span>
                   <input
                     v-model.trim="field.label"
                     class="adm-input"
-                    required
+                    :required="field.type !== 'page_break'"
                     maxlength="300"
                     @change="syncKey(field, i)"
                   />
+                  <small v-if="field.type === 'page_break'"
+                    >For your reference. Members see “Page n of m”.</small
+                  >
                 </label>
-                <label class="adm-field">
+                <label v-if="isQuestion(field)" class="adm-field">
                   <span>Answer type</span>
                   <AdminSelect v-model="field.type" :options="TYPE_OPTIONS" />
                 </label>
-                <div class="checks">
+                <label class="adm-field wide">
+                  <span>Help text (optional)</span>
+                  <textarea v-model="field.description" class="adm-input" maxlength="2000" />
+                </label>
+                <div v-if="field.type !== 'section' && field.type !== 'page_break'" class="checks">
                   <label class="adm-check">
                     <input v-model="field.required" type="checkbox" />
                     <span>Required</span>
@@ -307,6 +361,25 @@
                   <span>Options (one per line)</span>
                   <textarea v-model="field.optionsText" class="adm-input" />
                 </label>
+                <template v-if="field.type === 'file'">
+                  <label class="adm-field">
+                    <span>Accept</span>
+                    <AdminSelect v-model="field.accept" :options="ACCEPT_OPTIONS" />
+                  </label>
+                  <label class="adm-field">
+                    <span>Most files</span>
+                    <input
+                      v-model.number="field.max_files"
+                      class="adm-input"
+                      type="number"
+                      min="1"
+                      max="10"
+                      step="1"
+                      inputmode="numeric"
+                    />
+                    <small>1 to 10 files per member.</small>
+                  </label>
+                </template>
                 <details class="advanced wide">
                   <summary>Advanced</summary>
                   <div class="adm-form advanced-body">
@@ -320,7 +393,7 @@
                       />
                       <small>Identifies the answer. Must be unique in this form.</small>
                     </label>
-                    <label class="adm-field">
+                    <label v-if="isQuestion(field)" class="adm-field">
                       <span>Prefill from profile</span>
                       <AdminSelect v-model="field.prefill" :options="PREFILL_OPTIONS" />
                     </label>
@@ -329,9 +402,20 @@
               </div>
             </li>
           </ol>
-          <button type="button" class="adm-btn ghost add-question" @click="addField">
-            Add question
-          </button>
+          <div class="add-row" role="group" aria-label="Add to the form">
+            <button type="button" class="adm-btn ghost" @click="addBlock('text')">
+              Add question
+            </button>
+            <button type="button" class="adm-btn ghost" @click="addBlock('file')">
+              Add file upload
+            </button>
+            <button type="button" class="adm-btn ghost" @click="addBlock('section')">
+              Add section header
+            </button>
+            <button type="button" class="adm-btn ghost" @click="addBlock('page_break')">
+              Add page break
+            </button>
+          </div>
         </section>
       </form>
 
@@ -385,9 +469,18 @@
       ref="respDlg"
       fullscreen
       :title="`${responsesFor.title} responses`"
-      @close="responsesFor = null"
+      @close="closeResponses"
     >
       <div class="resp-bar">
+        <a
+          v-if="isSuperAdmin && driveFolder"
+          class="adm-btn ghost small"
+          :href="`https://drive.google.com/drive/folders/${encodeURIComponent(driveFolder)}`"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Open Drive folder
+        </a>
         <p class="adm-note" aria-live="polite">
           <template v-if="!respLoading && !respError">
             <b>{{ responses.length }}</b>
@@ -502,7 +595,42 @@
                 </div>
               </td>
               <td v-for="f in responseFields" :key="f.identity">
-                <span v-if="answerText(r, f) === '–'" class="none">–</span>
+                <ul v-if="isFileColumn(f) && fileIdsOf(r, f).length" class="files">
+                  <li v-for="(id, n) in fileIdsOf(r, f)" :key="id">
+                    <button
+                      v-if="thumbs[id]?.state === 'ready' && thumbs[id].type.startsWith('image/')"
+                      type="button"
+                      class="thumb"
+                      :aria-label="`Open ${f.label} photo ${n + 1}`"
+                      @click="viewPhoto(id, `${f.label} photo ${n + 1}`)"
+                    >
+                      <img :src="thumbs[id].url" alt="" />
+                    </button>
+                    <button
+                      v-else-if="thumbs[id]?.state === 'ready'"
+                      type="button"
+                      class="file-chip"
+                      @click="openPdf(id)"
+                    >
+                      PDF {{ n + 1 }}, open
+                    </button>
+                    <span v-else-if="thumbs[id]?.state === 'error'" class="file-err"
+                      >Couldn't load file</span
+                    >
+                    <span v-else-if="!photoIdsOf(r, f).has(id)" class="file-wait"
+                      >File {{ n + 1 }}</span
+                    >
+                    <span v-else class="file-wait">Loading…</span>
+                    <a
+                      class="file-link"
+                      :href="formFileLink(id)"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      >Open<span class="visually-hidden"> {{ f.label }} file {{ n + 1 }}</span></a
+                    >
+                  </li>
+                </ul>
+                <span v-else-if="isFileColumn(f) || answerText(r, f) === '–'" class="none">–</span>
                 <template v-else>{{ answerText(r, f) }}</template>
               </td>
             </tr>
@@ -614,15 +742,20 @@
         </button>
       </template>
     </AdminDialog>
+
+    <AdminDialog v-if="viewing" wide :title="viewing.label" @close="viewing = null">
+      <img :src="viewing.url" :alt="viewing.label" class="viewer-img" />
+    </AdminDialog>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, useId, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, useId, watch } from 'vue';
 import AdminDialog from './AdminDialog.vue';
 import AdminSelect from './AdminSelect.vue';
 import AdminCohortSelect from './AdminCohortSelect.vue';
 import { askConfirm } from '../../lib/admin-confirm.js';
+import { decodeFileAnswer, fetchFormFileBlob, uploadFormBanner } from '../../lib/form-files.js';
 import { auth, errorText, isRc, isSuperAdmin } from '../../lib/auth.js';
 import {
   FORM_FIELD_TYPES,
@@ -637,7 +770,9 @@ import {
   exportFormResponses,
   listFormGuests,
   fieldKeyFromLabel,
+  formFileLink,
   formResponsesToCsv,
+  getFormDriveFolder,
   getAvailableCohorts,
   listEvents,
   listForms,
@@ -646,6 +781,7 @@ import {
   requestFormPublish,
   reviewFormResponse,
   saveForm,
+  saveFormBanner,
   sortResponses,
 } from '../../lib/admin.js';
 
@@ -666,6 +802,17 @@ const TYPE_LABEL = {
 };
 const PREFILL_LABEL = { name: 'Preferred name', phone: 'Phone number', email: 'Email' };
 const TYPE_OPTIONS = FORM_FIELD_TYPES.map((t) => ({ value: t, label: TYPE_LABEL[t] ?? t }));
+// Files, headings and page breaks are entries in the same field list as questions.
+const BLOCK_KIND = {
+  file: 'File upload',
+  section: 'Section header',
+  page_break: 'Page break',
+};
+const ACCEPT_OPTIONS = [
+  { value: 'any', label: 'Photos or PDF' },
+  { value: 'image', label: 'Photos' },
+  { value: 'pdf', label: 'PDF' },
+];
 const PREFILL_OPTIONS = [
   { value: '', label: 'Nothing' },
   ...PREFILL_KEYS.map((p) => ({ value: p, label: PREFILL_LABEL[p] ?? p })),
@@ -783,7 +930,9 @@ function downloadGuests() {
   downloadCsv(`${responsesFor.value.title}-guests.csv`, rows, columns);
 }
 const responses = ref([]);
-const responseFields = ref([]);
+const responseFields = computed(() => formResponsesToCsv(responses.value).fields);
+const driveFolder = ref('');
+let responseRun = 0;
 const respError = ref('');
 const respLoading = ref(false);
 const statusFilter = ref('all');
@@ -795,6 +944,17 @@ const rejecting = ref(null);
 const rejectReason = ref('');
 const rejectError = ref('');
 const rejectDlg = ref(null);
+const bannerInput = ref(null);
+const bannerBusy = ref(false);
+const bannerError = ref('');
+const bannerNotice = ref('');
+// Response file previews: one object URL per file id, fetched a few at a time and revoked
+// when the review closes.
+const thumbs = reactive({});
+const thumbQueue = [];
+let thumbActive = 0;
+let thumbController = new AbortController();
+const viewing = ref(null);
 let fieldN = 0;
 
 const statusOf = (r) => r.review_status ?? 'pending';
@@ -895,6 +1055,22 @@ const toLocal = (iso) => {
 };
 const fromLocal = (v) => (v ? new Date(v).toISOString() : null);
 const isChoice = (field) => field.type === 'select' || field.type === 'multiselect';
+const isQuestion = (field) => !['file', 'section', 'page_break'].includes(field.type);
+const blockKind = (field) => BLOCK_KIND[field.type] ?? 'Question';
+// Same rules the server enforces. Shown while editing and blocks saving.
+const layoutProblem = computed(() => {
+  const fields = form.value?.fields ?? [];
+  if (fields[0]?.type === 'page_break') {
+    return "A page break can't come first. Put a question above it.";
+  }
+  if (fields.at(-1)?.type === 'page_break') {
+    return "A page break can't come last. Add a question after it.";
+  }
+  const twice = fields.some(
+    (f, i) => i > 0 && f.type === 'page_break' && fields[i - 1].type === 'page_break'
+  );
+  return twice ? 'Two page breaks in a row leave an empty page. Remove one.' : '';
+});
 
 async function load() {
   loading.value = true;
@@ -951,6 +1127,9 @@ function wrapField(f) {
     prefill: f.prefill || '',
     allow_other: !!f.allow_other,
     optionsText: (f.options || []).join('\n'),
+    description: f.description || '',
+    accept: f.accept || 'any',
+    max_files: f.max_files || 1,
   };
 }
 
@@ -984,10 +1163,13 @@ defineExpose({
 
 function edit(f) {
   formError.value = '';
+  bannerError.value = '';
+  bannerNotice.value = '';
   if (f) {
     form.value = {
       ...f,
       description: f.description ?? '',
+      banner_alt: f.banner_alt ?? '',
       invite_url: '',
       remove_invite: false,
       audience_cohorts: f.audience_cohorts ?? [],
@@ -1005,6 +1187,8 @@ function edit(f) {
     form.value = {
       title: '',
       description: '',
+      banner_url: null,
+      banner_alt: '',
       form_kind: 'general',
       group_label: '',
       group_purpose: '',
@@ -1062,21 +1246,26 @@ function onScope() {
   }
 }
 
-function addField() {
+const pageBreakCount = () => form.value.fields.filter((f) => f.type === 'page_break').length;
+function addBlock(type) {
+  const n = form.value.fields.length + 1;
+  // A new page break starts page N: the breaks so far plus two.
+  const label = type === 'page_break' ? `Page ${pageBreakCount() + 2}` : '';
+  const base = { text: 'field', file: 'field', section: 'section', page_break: 'page' }[type];
   form.value.fields.push(
     wrapField({
       key: fieldKeyFromLabel(
-        `field ${form.value.fields.length + 1}`,
+        `${base} ${n}`,
         form.value.fields.map((x) => x.key)
       ),
-      label: '',
-      type: 'text',
+      label,
+      type,
       required: false,
     })
   );
 }
 function syncKey(field, i) {
-  if (!field.key || /^field_?\d*$/.test(field.key) || field.key === 'field') {
+  if (!field.key || /^(field|section|page)_?\d*$/.test(field.key) || field.key === 'field') {
     field.key = fieldKeyFromLabel(
       field.label,
       form.value.fields.filter((_, j) => j !== i).map((x) => x.key)
@@ -1091,13 +1280,19 @@ function move(i, dir) {
   fields[j] = tmp;
 }
 
-function fieldPayload(field) {
+function fieldPayload(field, pageNo) {
   const row = {
     key: field.key,
-    label: field.label,
+    // The page name is optional in the builder; the shared validator still needs a label.
+    label: field.type === 'page_break' && !field.label ? `Page ${pageNo}` : field.label,
     type: field.type,
     required: !!field.required,
   };
+  if (field.description) row.description = field.description;
+  if (field.type === 'file') {
+    row.accept = field.accept || 'any';
+    row.max_files = Math.min(Math.max(Number(field.max_files) || 1, 1), 10);
+  }
   if (field.prefill) row.prefill = field.prefill;
   if (field.type === 'select' || field.type === 'multiselect') {
     row.options = field.optionsText
@@ -1111,6 +1306,10 @@ function fieldPayload(field) {
 
 async function save(mode) {
   formError.value = '';
+  if (layoutProblem.value) {
+    formError.value = layoutProblem.value;
+    return;
+  }
   if (form.value.scope === 'event') {
     const bound = events.value.find((event) => event.id === form.value.event_id);
     if (!form.value.event_id || bound?.entry_mode === 'open') {
@@ -1132,7 +1331,10 @@ async function save(mode) {
       id: form.value.id,
       title: form.value.title,
       description: form.value.description || null,
-      fields: form.value.fields.map(fieldPayload),
+      // A page break opens the next page: the first one starts page 2.
+      fields: form.value.fields.map((field, i, all) =>
+        fieldPayload(field, all.slice(0, i + 1).filter((x) => x.type === 'page_break').length + 1)
+      ),
       region_id: form.value.scope === 'region' ? form.value.region_id : null,
       community_id: form.value.scope === 'community' ? form.value.community_id : null,
       event_id: form.value.scope === 'event' ? form.value.event_id : null,
@@ -1148,6 +1350,9 @@ async function save(mode) {
       archived_at: form.value.archived_at || null,
       source_url: form.value.source_url || null,
     };
+    const oldAlt = forms.value.find((row) => row.id === form.value.id)?.banner_alt || '';
+    if ((form.value.banner_alt || '') !== oldAlt)
+      payload.banner_alt = form.value.banner_alt || null;
     if (form.value.remove_invite) payload.invite_url = null;
     else if (form.value.invite_url) payload.invite_url = form.value.invite_url;
     if (mode === 'publish' && approvalScope.value) {
@@ -1276,10 +1481,13 @@ async function askRemoveForm(f) {
   }
 }
 
-function answerText(row, field) {
-  const captured = (row.field_schema || []).find(
+function capturedField(row, field) {
+  return (row.field_schema || []).find(
     (item) => JSON.stringify([item.key, item.label || item.key, item.type || '']) === field.identity
   );
+}
+function answerText(row, field) {
+  const captured = capturedField(row, field);
   if (!captured) return '–';
   const value = row.answers?.[captured.key];
   if (Array.isArray(value)) return value.join('; ');
@@ -1287,13 +1495,112 @@ function answerText(row, field) {
   return String(value);
 }
 
+const isFileColumn = (field) => field.type === 'file';
+function fileIdsOf(row, field) {
+  if (!isFileColumn(field)) return [];
+  const captured = capturedField(row, field);
+  const value = captured ? row.answers?.[captured.key] : null;
+  return decodeFileAnswer(value).map(({ file_id }) => file_id);
+}
+// Only photos preview inline; PDFs (up to 10 MB each) load when an admin opens them.
+function photoIdsOf(row, field) {
+  if (!isFileColumn(field)) return new Set();
+  const captured = capturedField(row, field);
+  const value = captured ? row.answers?.[captured.key] : null;
+  return new Set(
+    decodeFileAnswer(value)
+      .filter(({ mime }) => typeof mime === 'string' && mime.startsWith('image/'))
+      .map(({ file_id }) => file_id)
+  );
+}
+const isPreviewable = (type) => type.startsWith('image/') || type === 'application/pdf';
+function ensureThumb(id) {
+  if (thumbs[id]) return;
+  thumbs[id] = { state: 'loading', url: '', type: '' };
+  thumbQueue.push(id);
+  pumpThumbs();
+}
+function pumpThumbs() {
+  while (thumbActive < 3 && thumbQueue.length) {
+    const id = thumbQueue.shift();
+    const { signal } = thumbController;
+    thumbActive += 1;
+    fetchFormFileBlob(id, signal)
+      .then((blob) => {
+        if (signal.aborted) return;
+        if (!isPreviewable(blob.type || '')) throw new Error('unsupported');
+        thumbs[id] = { state: 'ready', url: URL.createObjectURL(blob), type: blob.type };
+      })
+      .catch(() => {
+        if (!signal.aborted) thumbs[id] = { state: 'error', url: '', type: '' };
+      })
+      .finally(() => {
+        if (signal.aborted) return;
+        thumbActive -= 1;
+        pumpThumbs();
+      });
+  }
+}
+watch([shownResponses, responseFields, respLoading], ([rows, fields, loading]) => {
+  if (!responsesFor.value || loading) return;
+  const visibleIds = new Set();
+  for (const row of rows) {
+    for (const field of fields) {
+      for (const id of photoIdsOf(row, field)) visibleIds.add(id);
+    }
+  }
+  for (let i = thumbQueue.length - 1; i >= 0; i--) {
+    const id = thumbQueue[i];
+    if (visibleIds.has(id)) continue;
+    thumbQueue.splice(i, 1);
+    delete thumbs[id];
+  }
+  for (const id of visibleIds) ensureThumb(id);
+});
+// Drops in-flight loads (their blobs are discarded on arrival) and revokes shown previews.
+function releaseThumbs() {
+  thumbController.abort();
+  thumbController = new AbortController();
+  thumbActive = 0;
+  thumbQueue.length = 0;
+  for (const id of Object.keys(thumbs)) {
+    if (thumbs[id].url) URL.revokeObjectURL(thumbs[id].url);
+    delete thumbs[id];
+  }
+  viewing.value = null;
+}
+function closeResponses() {
+  responseRun++;
+  releaseThumbs();
+  responsesFor.value = null;
+}
+function viewPhoto(id, label) {
+  viewing.value = { url: thumbs[id].url, label };
+}
+// Opened from the click itself, so the browser allows the new tab.
+function openPdf(id) {
+  window.open(thumbs[id]?.url, '_blank', 'noopener');
+}
+onBeforeUnmount(closeResponses);
+
 async function openResponses(f) {
+  const run = ++responseRun;
+  releaseThumbs();
   responsesFor.value = f;
   responses.value = [];
-  responseFields.value = [];
+  driveFolder.value = '';
+  respError.value = '';
+  if (isSuperAdmin.value && f.has_files) {
+    getFormDriveFolder(f.id)
+      .then((id) => {
+        if (run === responseRun) driveFolder.value = id;
+      })
+      .catch((err) => {
+        if (run === responseRun) respError.value = errorText(err);
+      });
+  }
   guests.value = [];
   guestHouse.value = 'all';
-  respError.value = '';
   reviewError.value = '';
   refreshNotice.value = '';
   statusFilter.value = 'all';
@@ -1304,14 +1611,52 @@ async function openResponses(f) {
       exportFormResponses(f.id),
       listFormGuests(f.id).catch(() => []),
     ]);
+    if (run !== responseRun) return;
     responses.value = rows;
     guests.value = guestRows ?? [];
-    responseFields.value = formResponsesToCsv(rows).fields;
   } catch (e) {
-    respError.value = errorText(e);
+    if (run === responseRun) respError.value = errorText(e);
   } finally {
-    respLoading.value = false;
+    if (run === responseRun) respLoading.value = false;
   }
+}
+
+async function changeBanner(file) {
+  const draft = form.value;
+  const formId = draft?.id;
+  if (!formId || bannerBusy.value) return;
+  const alt = draft.banner_alt || null;
+  bannerBusy.value = true;
+  bannerError.value = '';
+  bannerNotice.value = '';
+  try {
+    const url = file ? await uploadFormBanner(formId, file) : null;
+    await saveFormBanner(formId, url, alt);
+    const stored = forms.value.find((row) => row.id === formId);
+    if (stored) {
+      stored.banner_url = url;
+      if (file) stored.banner_alt = alt;
+    }
+    if (form.value === draft) {
+      draft.banner_url = url;
+      bannerNotice.value = file ? 'Banner saved.' : 'Banner removed.';
+    }
+    emit('changed');
+  } catch (err) {
+    if (form.value === draft) bannerError.value = errorText(err);
+  } finally {
+    bannerBusy.value = false;
+  }
+}
+
+function onBannerPick(event) {
+  const file = event.target.files?.[0];
+  event.target.value = '';
+  if (file) changeBanner(file);
+}
+
+function removeBanner() {
+  return changeBanner(null);
 }
 
 function askReject(r) {
@@ -1321,10 +1666,10 @@ function askReject(r) {
 }
 
 // Re-reads the list so reviewer and time come from the database. Returns false when that fails.
-async function refreshResponses(formId) {
+async function refreshResponses(formId, run) {
   try {
     const rows = await exportFormResponses(formId);
-    if (responsesFor.value?.id === formId) responses.value = rows;
+    if (run === responseRun) responses.value = rows;
     return true;
   } catch {
     return false;
@@ -1339,6 +1684,7 @@ async function review(r, status, reason = null) {
   reviewError.value = '';
   refreshNotice.value = '';
   const formId = responsesFor.value?.id;
+  const run = responseRun;
   try {
     const saved = await reviewFormResponse(
       r.id,
@@ -1346,7 +1692,7 @@ async function review(r, status, reason = null) {
       r.resubmitted_at ?? r.submitted_at,
       reason
     );
-    if (responsesFor.value?.id === formId) {
+    if (run === responseRun && responsesFor.value?.id === formId) {
       const pending = saved.review_status === 'pending';
       responses.value = responses.value.map((x) =>
         x.id === r.id
@@ -1361,17 +1707,18 @@ async function review(r, status, reason = null) {
           : x
       );
     }
-    refreshResponses(formId).then((ok) => {
-      if (!ok && responsesFor.value?.id === formId)
-        refreshNotice.value = "Saved, but couldn't refresh the list.";
+    if (run !== responseRun) return true;
+    refreshResponses(formId, run).then((ok) => {
+      if (!ok && run === responseRun) refreshNotice.value = "Saved, but couldn't refresh the list.";
     });
     return true;
   } catch (e) {
+    if (run !== responseRun) return false;
     if (e?.code === 'PT409') {
       // The member changed their answers since this list loaded: drop the decision and reload.
       rejectDlg.value?.close();
       reviewError.value = errorText(e);
-      if (!(await refreshResponses(formId)))
+      if (!(await refreshResponses(formId, run)) && run === responseRun)
         refreshNotice.value = "Couldn't refresh the list. Close and reopen it.";
     } else if (rejecting.value) rejectError.value = errorText(e);
     else reviewError.value = errorText(e);
@@ -1457,9 +1804,6 @@ function downloadResponses() {
 }
 .advanced-body {
   margin-top: 14px;
-}
-.add-question {
-  width: 100%;
 }
 .push {
   margin-right: auto;
@@ -1632,5 +1976,87 @@ function downloadResponses() {
   .resp-wrap {
     max-height: calc(100dvh - 180px);
   }
+}
+.add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.banner-preview {
+  margin: 0 0 12px;
+  overflow: hidden;
+  aspect-ratio: 3 / 1;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+.banner-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.files {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.files li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.thumb {
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  cursor: zoom-in;
+}
+.thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.file-chip,
+.file-link {
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 99px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  display: inline-flex;
+  align-items: center;
+}
+.file-chip {
+  border: 1px solid var(--line-strong);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+}
+.file-link {
+  color: var(--mari-ink);
+}
+.file-err {
+  font-size: 13px;
+  color: var(--verm);
+}
+.file-wait {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.viewer-img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
 }
 </style>

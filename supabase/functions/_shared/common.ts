@@ -54,6 +54,11 @@ const allowedOrigins = [...HOUSE_ORIGINS, ...(Deno.env.get('ALLOWED_ORIGINS') ??
 function originAllowed(origin) {
   return allowedOrigins.some((a) => (typeof a === 'string' ? a === origin : a.test(origin)));
 }
+// The request's Origin if it is one of the allowed sites, else null.
+export function allowedOrigin(req) {
+  const origin = req.headers.get('Origin');
+  return origin && originAllowed(origin) ? origin : null;
+}
 function corsHeaders(req) {
   const origin = req.headers.get('Origin');
   if (!origin || !originAllowed(origin)) return {};
@@ -156,7 +161,14 @@ export function serve(name, handler) {
         error: 'method_not_allowed',
       });
     try {
-      return respond(200, await handler(req));
+      const result = await handler(req);
+      // A handler may return a ready Response (file streaming); it only gains the CORS headers.
+      if (result instanceof Response) {
+        const headers = new Headers(result.headers);
+        for (const [k, v] of Object.entries(cors)) headers.set(k, v);
+        return new Response(result.body, { status: result.status, headers });
+      }
+      return respond(200, result);
     } catch (e) {
       if (e instanceof HttpError)
         return respond(e.status, {

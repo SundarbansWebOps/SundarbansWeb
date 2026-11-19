@@ -6,9 +6,11 @@
 //      30-day wait, anonymises the member (placeholders), clears form answers, redacts the
 //      member's request snapshots, marks the request approved + executed, writes audit_log.
 //   2. Deletes the Auth user (sessions and identities go with it).
+//   3. Reconciles the member's Drive files within a time budget.
 // Anonymise first, then delete (the member id, blacklist hashes, requests and audit stay).
-// If step 2 fails, calling again with the same request_id retries only the Auth deletion.
+// Calling again with the same request_id retries Auth deletion and drains more Drive work.
 import { admin, HttpError, readJson, requireSuperAdmin, rpc, serve, uuidField } from "../_shared/common.ts";
+import { sweepFormFiles } from "../_shared/drive.ts";
 serve("hard-delete-member", async (req)=>{
   const actor = await requireSuperAdmin(req);
   const requestId = uuidField(await readJson(req), "request_id");
@@ -41,10 +43,22 @@ serve("hard-delete-member", async (req)=>{
       }
     });
   }
+  const deadline = Date.now() + 20_000;
+  let formFilesDeleted = 0;
+  while (Date.now() < deadline) {
+    const batch = await sweepFormFiles(10, { memberId: result.member_id, deadline });
+    formFilesDeleted += batch.deleted;
+    if (!batch.claimed) break;
+  }
+  const formFilesRemaining = await rpc("svc_form_files_remaining", {
+    p_member_id: result.member_id
+  });
   return {
     request_id: requestId,
     member_id: result.member_id,
     state: result.state,
-    auth_user_deleted: true
+    auth_user_deleted: true,
+    form_files_deleted: formFilesDeleted,
+    form_files_remaining: formFilesRemaining
   };
 });

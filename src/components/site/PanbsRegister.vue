@@ -151,8 +151,12 @@
               />
             </label>
 
-            <template v-for="field in asked" :key="field.key">
-              <label v-if="field.type === 'select'" class="f">
+            <template v-for="field in blocks" :key="field.key">
+              <div v-if="isLayout(field)" class="f">
+                <h3 class="guest-section">{{ field.label }}</h3>
+                <p v-if="field.description" class="guest-section">{{ field.description }}</p>
+              </div>
+              <label v-else-if="field.type === 'select'" class="f">
                 <span>{{ field.label }} <small v-if="!field.required">optional</small></span>
                 <select v-model="answers[field.key]" :required="field.required" :disabled="busy">
                   <option value="">Choose</option>
@@ -272,12 +276,21 @@ const who = reactive({ name: '', email: '', house: '', phone: '' });
 const answers = reactive({});
 
 const busy = computed(() => state.value === 'sending');
-const asked = computed(() => (form.value?.fields || []).filter((f) => !FIXED.has(f.prefill)));
+const isLayout = (f) => f.type === 'section' || f.type === 'page_break';
+const guestQuestions = computed(() =>
+  (form.value?.fields || []).filter((f) => !isLayout(f) && f.type !== 'file')
+);
+const blocks = computed(() =>
+  (form.value?.fields || []).filter(
+    (f) => isLayout(f) || (f.type !== 'file' && !FIXED.has(f.prefill))
+  )
+);
+const asked = computed(() => blocks.value.filter((f) => !isLayout(f)));
 const emailBad = computed(() => tried.value && !STUDENT_EMAIL.test(who.email));
 // A required question that takes the phone is answered by the fixed Phone field, so that field
 // becomes required too (otherwise the server names a question the visitor never saw).
 const phoneRequired = computed(() =>
-  (form.value?.fields || []).some((f) => f.prefill === 'phone' && f.required)
+  guestQuestions.value.some((f) => f.prefill === 'phone' && f.required)
 );
 
 // The join window opens 15 minutes before the start. A page left open checks for the link when it
@@ -338,7 +351,7 @@ watch(
       if (mine !== run) return;
       form.value = f;
       for (const k of Object.keys(answers)) delete answers[k];
-      for (const field of f?.fields || []) {
+      for (const field of asked.value) {
         answers[field.key] =
           field.type === 'multiselect' ? [] : field.type === 'checkbox' ? false : '';
       }
@@ -399,7 +412,7 @@ async function send() {
       name: who.name,
       house: who.house,
       phone: who.phone ? phoneOut(who.phone) : null,
-      answers: { ...answers },
+      answers: Object.fromEntries(asked.value.map(({ key }) => [key, answers[key]])),
     });
     remember(props.e.dbId);
     sent.value = true;
@@ -784,5 +797,9 @@ h2 {
   .inner {
     padding: 18px 18px 22px;
   }
+}
+.guest-section {
+  margin: 0;
+  white-space: pre-line;
 }
 </style>

@@ -1,4 +1,4 @@
-<!-- Member form on its own route. Same field renderer as the Lounge dialog. -->
+<!-- Member form on its own route, with the questions shared by the Lounge dialogs. -->
 <template>
   <div class="lounge-form-shell">
     <header class="lounge-form-nav">
@@ -13,6 +13,9 @@
       </div>
     </header>
     <main id="main-content" class="wrap">
+      <figure v-if="form?.banner_url" class="banner">
+        <img :src="form.banner_url" :alt="form.banner_alt || ''" decoding="async" />
+      </figure>
       <header class="head">
         <p class="kicker">House form</p>
         <h1>{{ form?.group_label || form?.title || 'Form' }}</h1>
@@ -31,7 +34,7 @@
         {{ unavailableMessage }}
       </p>
 
-      <form v-else class="slip" @submit.prevent="send">
+      <form v-else :key="form.id" class="slip" novalidate @submit.prevent="send">
         <p v-if="rejected" class="msg" role="status">
           <strong>Not approved.</strong>
           {{ form.review_reason || 'The admins could not approve this one.' }}
@@ -47,17 +50,20 @@
         <p v-if="locked && !isSuperAdmin && !invite" class="msg" role="status">
           Your application is saved. Sending this form is not WhatsApp admission.
         </p>
-        <FormFields
-          v-else-if="canViewFields"
-          ref="fieldsEl"
-          v-model:save-phone="savePhone"
-          :fields="form.fields || []"
-          :disabled="previewOnly || locked || (rejected && !canSubmit)"
-        />
+        <template v-if="canViewFields">
+          <FormQuestions
+            ref="questions"
+            v-model:save-phone="savePhone"
+            :form="form"
+            :disabled="fieldsDisabled"
+          />
+        </template>
+        <FormSubmittedFiles v-if="locked || done" :form-id="form.id" />
         <p v-if="previewOnly" class="msg" role="status">Preview only. {{ unavailableMessage }}</p>
         <p v-else-if="!canSubmit && !locked" class="msg" role="status">
           {{ unavailableMessage }}
         </p>
+        <p v-if="uploadsBusy" class="msg" role="status">Finish the uploads to continue.</p>
         <p v-if="error" class="msg err" role="alert">{{ error }}</p>
         <p v-if="invite" class="next" role="status">
           <strong>Saved. One step left.</strong>
@@ -76,8 +82,30 @@
           your response.
         </p>
         <div class="acts">
-          <button v-if="!locked && !done && canSubmit" class="go" type="submit" :disabled="busy">
-            {{ busy ? 'Sending…' : rejected ? 'Send again' : 'Send' }}
+          <button
+            v-if="canViewFields && questions?.hasPrevious"
+            class="ghost"
+            type="button"
+            @click="questions.back()"
+          >
+            Back
+          </button>
+          <button
+            v-if="canViewFields && questions && !questions.isLast"
+            class="go"
+            type="button"
+            :disabled="uploadsBusy"
+            @click="questions.next()"
+          >
+            Next
+          </button>
+          <button
+            v-if="!locked && !done && canSubmit && questions?.isLast"
+            class="go"
+            type="submit"
+            :disabled="submitting || uploadsBusy"
+          >
+            {{ submitting ? 'Sending…' : rejected ? 'Send again' : 'Send' }}
           </button>
           <a v-if="invite" class="go join" :href="invite" target="_blank" rel="noopener noreferrer"
             >Open WhatsApp invite <span aria-hidden="true">→</span></a
@@ -97,7 +125,8 @@ import { setTheme, theme as siteTheme } from '../lib/theme.js';
 import '../components/lounge/lounge.css';
 import '../components/lounge/panels.css';
 import '../components/lounge/tokens.css';
-import FormFields from '../components/lounge/FormFields.vue';
+import FormQuestions from '../components/lounge/FormQuestions.vue';
+import FormSubmittedFiles from '../components/lounge/FormSubmittedFiles.vue';
 import {
   fetchInvite,
   formById,
@@ -115,13 +144,14 @@ root.classList.add('lounge-active');
 root.dataset.theme = theme.value;
 const ready = ref(false);
 const loadError = ref('');
-const fieldsEl = ref(null);
 const savePhone = ref(false);
-const busy = ref(false);
+const submitting = ref(false);
 const error = ref('');
 const done = ref(false);
 const invite = ref('');
 const inviteError = ref('');
+const questions = ref(null);
+const uploadsBusy = computed(() => questions.value?.uploadsBusy ?? false);
 
 const form = computed(() => formById(route.params.id));
 /* Submitted and not rejected: final. A rejected response can be filled in again. */
@@ -131,7 +161,12 @@ const canSubmit = computed(
   () => !!form.value && (form.value.accepting_responses ?? form.value.is_open ?? false)
 );
 const previewOnly = computed(() => isSuperAdmin.value && !canSubmit.value);
-const canViewFields = computed(() => canSubmit.value || isSuperAdmin.value);
+const canViewFields = computed(
+  () => !locked.value && !done.value && (canSubmit.value || isSuperAdmin.value)
+);
+const fieldsDisabled = computed(
+  () => previewOnly.value || locked.value || (rejected.value && !canSubmit.value)
+);
 const unavailableMessage = computed(() =>
   formUnavailableMessage(form.value, member.region_id, member.cohort)
 );
@@ -175,14 +210,16 @@ async function loadInvite() {
 }
 
 async function send() {
-  if (busy.value || !form.value || locked.value || !canSubmit.value) return;
-  if (!(await fieldsEl.value?.validate())) return;
-  busy.value = true;
+  if (submitting.value || uploadsBusy.value || !form.value || locked.value || !canSubmit.value)
+    return;
+  if (!questions.value?.isLast) return questions.value?.next();
+  if (!(await questions.value.validate())) return;
+  submitting.value = true;
   error.value = '';
   try {
     const result = await submitLoungeForm(
       form.value.id,
-      fieldsEl.value?.answers() ?? {},
+      questions.value.answers(),
       savePhone.value
     );
     done.value = true;
@@ -193,7 +230,7 @@ async function send() {
   } catch (err) {
     error.value = errorText(err);
   } finally {
-    busy.value = false;
+    submitting.value = false;
   }
 }
 </script>
@@ -259,6 +296,20 @@ async function send() {
   padding: 40px 24px 72px;
   display: grid;
   gap: 22px;
+}
+.banner {
+  margin: 0;
+  overflow: hidden;
+  aspect-ratio: 3 / 1;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--paper);
+}
+.banner img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .kicker {
   margin: 0 0 8px;
@@ -327,9 +378,11 @@ h1 {
   min-height: 44px;
   padding: 0 18px;
   border-radius: 99px;
+  font: inherit;
   font-size: 15px;
   font-weight: 650;
   text-decoration: none;
+  cursor: pointer;
 }
 .go {
   border: 0;
@@ -361,6 +414,7 @@ h1 {
 }
 .go:disabled {
   opacity: 0.55;
+  cursor: default;
 }
 .ghost {
   border: 1.5px solid var(--line-strong);
@@ -426,6 +480,11 @@ h1 {
   }
   .wrap {
     padding: 24px 16px 40px;
+  }
+}
+@media (max-width: 560px) {
+  .banner {
+    aspect-ratio: 16 / 9;
   }
 }
 </style>
