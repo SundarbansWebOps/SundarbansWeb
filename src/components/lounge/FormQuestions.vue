@@ -65,10 +65,10 @@ const uid = useId();
 const page = ref(0);
 const headings = [];
 const inputs = new Map();
-const fileIds = reactive({});
+const fileIds = reactive(Object.create(null));
 const busyFields = reactive(new Set());
 const restoring = ref(false);
-const pendingFiles = ref({});
+const pendingFiles = ref(Object.create(null));
 const pendingError = ref('');
 const uploadsBusy = computed(() => restoring.value || busyFields.size > 0);
 
@@ -107,7 +107,8 @@ async function loadPending() {
   try {
     const files = await listPendingFormFiles(props.form.id);
     if (run !== pendingRun) return;
-    const grouped = {};
+    // Null prototype: a question keyed "constructor" must not hit Object.prototype.
+    const grouped = Object.create(null);
     for (const file of files ?? []) (grouped[file.field_key] ??= []).push(file);
     pendingFiles.value = grouped;
   } catch (err) {

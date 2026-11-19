@@ -263,6 +263,21 @@ select lives_ok($$select public.svc_form_file_start('c2100000-0000-4000-8000-000
  'start: an expired reservation does not consume quota');
 reset role;
 
+-- Discarding frees the max_files slot but not the weekly start budget (3 x max_files + 5).
+update public.form_files set status = 'delete_pending' where member_id = 'c2100000-0000-4000-8000-000000000004' and field_key = 'doc';
+insert into private.form_file_starts(member_id, form_id, field_key)
+select 'c2100000-0000-4000-8000-000000000004','c2100000-0000-4000-8000-0000000000f1','doc' from generate_series(1, 8 - (
+  select count(*) from private.form_file_starts where member_id = 'c2100000-0000-4000-8000-000000000004' and field_key = 'doc'));
+set local role service_role;
+select throws_ok($$select public.svc_form_file_start('c2100000-0000-4000-8000-000000000004','c2100000-0000-4000-8000-0000000000f1','doc','again.pdf','application/pdf',10)$$,
+ '22023', 'Too many uploads for this question this week; ask the form''s organisers for help', 'start: discarded uploads still count toward the weekly cap');
+reset role;
+update private.form_file_starts set started_at = now() - interval '8 days' where member_id = 'c2100000-0000-4000-8000-000000000004';
+set local role service_role;
+select lives_ok($$select public.svc_form_file_start('c2100000-0000-4000-8000-000000000004','c2100000-0000-4000-8000-0000000000f1','doc','again.pdf','application/pdf',10)$$,
+ 'start: starts older than a week no longer count');
+reset role;
+
 -- ── Hard delete queues files even after the form has gone ───────────────────
 insert into public.form_files(id, form_id, field_key, member_id, original_name, mime, size_bytes, drive_file_id, status, attached_at, upload_session_url)
 values

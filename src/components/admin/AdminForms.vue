@@ -617,6 +617,9 @@
                     <span v-else-if="thumbs[id]?.state === 'error'" class="file-err"
                       >Couldn't load file</span
                     >
+                    <span v-else-if="!photoIdsOf(r, f).has(id)" class="file-wait"
+                      >File {{ n + 1 }}</span
+                    >
                     <span v-else class="file-wait">Loading…</span>
                     <a
                       class="file-link"
@@ -1277,10 +1280,11 @@ function move(i, dir) {
   fields[j] = tmp;
 }
 
-function fieldPayload(field) {
+function fieldPayload(field, pageNo) {
   const row = {
     key: field.key,
-    label: field.label,
+    // The page name is optional in the builder; the shared validator still needs a label.
+    label: field.type === 'page_break' && !field.label ? `Page ${pageNo}` : field.label,
     type: field.type,
     required: !!field.required,
   };
@@ -1327,7 +1331,10 @@ async function save(mode) {
       id: form.value.id,
       title: form.value.title,
       description: form.value.description || null,
-      fields: form.value.fields.map(fieldPayload),
+      // A page break opens the next page: the first one starts page 2.
+      fields: form.value.fields.map((field, i, all) =>
+        fieldPayload(field, all.slice(0, i + 1).filter((x) => x.type === 'page_break').length + 1)
+      ),
       region_id: form.value.scope === 'region' ? form.value.region_id : null,
       community_id: form.value.scope === 'community' ? form.value.community_id : null,
       event_id: form.value.scope === 'event' ? form.value.event_id : null,
@@ -1495,6 +1502,17 @@ function fileIdsOf(row, field) {
   const value = captured ? row.answers?.[captured.key] : null;
   return decodeFileAnswer(value).map(({ file_id }) => file_id);
 }
+// Only photos preview inline; PDFs (up to 10 MB each) load when an admin opens them.
+function photoIdsOf(row, field) {
+  if (!isFileColumn(field)) return new Set();
+  const captured = capturedField(row, field);
+  const value = captured ? row.answers?.[captured.key] : null;
+  return new Set(
+    decodeFileAnswer(value)
+      .filter(({ mime }) => typeof mime === 'string' && mime.startsWith('image/'))
+      .map(({ file_id }) => file_id)
+  );
+}
 const isPreviewable = (type) => type.startsWith('image/') || type === 'application/pdf';
 function ensureThumb(id) {
   if (thumbs[id]) return;
@@ -1528,7 +1546,7 @@ watch([shownResponses, responseFields, respLoading], ([rows, fields, loading]) =
   const visibleIds = new Set();
   for (const row of rows) {
     for (const field of fields) {
-      for (const id of fileIdsOf(row, field)) visibleIds.add(id);
+      for (const id of photoIdsOf(row, field)) visibleIds.add(id);
     }
   }
   for (let i = thumbQueue.length - 1; i >= 0; i--) {

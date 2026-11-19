@@ -86,7 +86,9 @@ All actions require a valid bearer token; the DB decides via `svc_*` RPCs (patte
 
 1. `start { form_id, field_key, name, mime, size }` → RPC checks: active member, `can_submit_form`,
    member has **no** response for this form yet, field exists with `type=file`, `mime` allowed by the
-   field's `accept`, `size` within cap, (uploading+ready) files for member/field < `max_files`.
+   field's `accept`, `size` within cap, (uploading+ready) files for member/field < `max_files`, and
+   starts for member/field in the last 7 days < `3 × max_files + 5` (discarded files still count, since
+   Drive keeps a resumable URL alive for up to a week).
    Inserts row `uploading`. Function ensures the form folder, then creates a Drive **resumable upload
    session** with metadata `{ name: "<email local part> – <field label> – <n>.<ext>", parents:[folder],
    appProperties:{ form_file_id: <row id> } }`, `X-Upload-Content-Type`/`-Length` = declared, and the

@@ -51,6 +51,18 @@ create index form_file_erasure_sweep on private.form_file_erasure (next_sweep_at
 alter table private.form_file_erasure enable row level security;
 revoke all on private.form_file_erasure from public, anon, authenticated, service_role;
 
+-- Every upload start, kept for a week. Discarding a file frees its max_files slot, but Drive keeps the
+-- resumable upload URL alive for up to a week, so starts themselves are capped (svc_form_file_start).
+create table private.form_file_starts (
+  member_id uuid not null references public.members(id) on delete cascade,
+  form_id uuid not null,
+  field_key text not null,
+  started_at timestamptz not null default now()
+);
+create index form_file_starts_member on private.form_file_starts (member_id, form_id, field_key, started_at);
+alter table private.form_file_starts enable row level security;
+revoke all on private.form_file_starts from public, anon, authenticated, service_role;
+
 create function private.preserve_form_file_erasure() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
@@ -305,6 +317,12 @@ begin
    and status in ('uploading','ready') and created_at < now() - interval '24 hours';
  select count(*) into v_n from public.form_files where member_id = p_actor and form_id = p_form_id and field_key = p_field_key and status in ('uploading','ready');
  if v_n >= v_max then raise exception 'You can attach at most % file(s) to this question', v_max using errcode = '22023'; end if;
+ -- Room for retries and swaps (3x the limit + 5), but a bounded number of live Drive upload URLs.
+ delete from private.form_file_starts where member_id = p_actor and started_at < now() - interval '7 days';
+ if (select count(*) from private.form_file_starts where member_id = p_actor and form_id = p_form_id
+     and field_key = p_field_key) >= v_max * 3 + 5
+ then raise exception 'Too many uploads for this question this week; ask the form''s organisers for help' using errcode = '22023'; end if;
+ insert into private.form_file_starts(member_id, form_id, field_key) values (p_actor, p_form_id, p_field_key);
  if (select count(*) from public.form_files where member_id = p_actor and status in ('uploading','ready')) >= 50 then raise exception 'Too many pending uploads; submit a form or remove some files' using errcode = '22023'; end if;
  v_ext := case p_mime when 'image/webp' then 'webp' when 'image/jpeg' then 'jpg' when 'image/png' then 'png' else 'pdf' end;
  insert into public.form_files(id, form_id, field_key, member_id, original_name, mime, size_bytes) values (v_id, p_form_id, p_field_key, p_actor, v_name, p_mime, p_size);
