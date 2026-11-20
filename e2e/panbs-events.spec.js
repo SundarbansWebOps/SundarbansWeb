@@ -174,6 +174,33 @@ test('a live PANBS event shows Join instead of the form', async ({ page }) => {
   await expect(sheet.getByRole('button', { name: 'Register' })).toHaveCount(0);
 });
 
+test('a tap on Register while the form is still loading opens it once it arrives', async ({
+  page,
+}) => {
+  await mockSupabase(page, {
+    signedIn: false,
+    data: { list_public_events: [PANBS_EVENT], get_panbs_join_link: null, get_panbs_form: FORM },
+  });
+  // Hold the form back until the tap has landed; fallback hands it to the mock above.
+  let release;
+  const held = new Promise((r) => (release = r));
+  await page.route('**/rest/v1/rpc/get_panbs_form', async (route) => {
+    await held;
+    await route.fallback();
+  });
+  await page.goto('/#/events');
+  await page
+    .getByRole('region', { name: /Coming up/ })
+    .getByText('Paradox quiz')
+    .first()
+    .click();
+  const sheet = page.getByRole('dialog', { name: 'Paradox quiz' });
+  await sheet.getByRole('button', { name: 'Loading…' }).click();
+  await expect(page.locator('dialog[open]')).toHaveCount(0);
+  release();
+  await expect(page.locator('dialog[open]').getByLabel('Student email')).toBeVisible();
+});
+
 test('registering twice says already registered', async ({ page }) => {
   await mockSupabase(page, {
     signedIn: false,
