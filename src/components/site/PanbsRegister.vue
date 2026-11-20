@@ -80,8 +80,13 @@
       @click.self="dlg.close()"
     >
       <div v-if="form" class="sheet">
-        <figure class="banner" :class="`w-${e.wing}`" aria-hidden="true">
-          <img v-if="e.image" :src="img.card(e.image)" alt="" />
+        <figure
+          class="banner"
+          :class="[`w-${e.wing}`, { 'is-form': form.banner_url }]"
+          :aria-hidden="form.banner_url && form.banner_alt ? undefined : 'true'"
+        >
+          <img v-if="form.banner_url" :src="form.banner_url" :alt="form.banner_alt || ''" />
+          <img v-else-if="e.image" :src="img.card(e.image)" alt="" />
           <img v-else-if="POSTER_ART[e.wing]" class="fig" :src="POSTER_ART[e.wing]" alt="" />
           <span class="tag mono">PAN BS</span>
         </figure>
@@ -639,7 +644,13 @@ async function logIn() {
     var(--sunk);
   border-bottom: 1px solid var(--line);
 }
+/* An organizer's form banner is 3:1, so the band takes its shape instead of cropping it. */
+.banner.is-form {
+  height: auto;
+  aspect-ratio: 3 / 1;
+}
 .banner img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;

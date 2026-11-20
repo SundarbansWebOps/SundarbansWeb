@@ -1,6 +1,9 @@
 <!-- Member form in the existing Lounge paper dialog. -->
 <template>
   <LoungeDialog ref="dlg" labelledby="ff-h" @close="emit('close')">
+    <figure v-if="form.banner_url" class="evd-banner">
+      <img :src="form.banner_url" :alt="form.banner_alt || ''" />
+    </figure>
     <form class="evd-form" novalidate @submit.prevent="send">
       <p class="gp-kicker">{{ kicker }}</p>
       <h2 id="ff-h" class="evd-h">{{ form.group_label || form.title }}</h2>

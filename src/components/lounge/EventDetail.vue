@@ -9,7 +9,10 @@
 <template>
   <LoungeDialog ref="dlg" labelledby="ed-h" @close="emit('close')">
     <div class="evd" :class="[commOf(event).cls, `s-${st}`, step]">
-      <div class="evd-art" :style="{ '--plate': `url('${plate}')` }" aria-hidden="true">
+      <figure v-if="step === 'form' && regForm?.banner_url" class="evd-banner">
+        <img :src="regForm.banner_url" :alt="regForm.banner_alt || ''" />
+      </figure>
+      <div v-else class="evd-art" :style="{ '--plate': `url('${plate}')` }" aria-hidden="true">
         <img :src="commOf(event).art" alt="" />
       </div>
 
