@@ -100,6 +100,28 @@ test('a signed-out student registers for a PANBS event on the event page', async
   await expect(page.getByRole('dialog').getByRole('button', { name: 'Register' })).toHaveCount(0);
 });
 
+test('the PANBS pop-up shows the form banner in place of the event poster', async ({ page }) => {
+  const banner =
+    'https://res.cloudinary.com/l59gy0g2/image/upload/f_auto,q_auto:good,w_1600,c_limit/v1/forms/b.jpg';
+  await mockSupabase(page, {
+    signedIn: false,
+    data: {
+      list_public_events: [PANBS_EVENT],
+      get_panbs_join_link: null,
+      get_panbs_form: { ...FORM, banner_url: banner, banner_alt: 'Quiz night banner' },
+    },
+  });
+  await page.goto('/#/events');
+  await page
+    .getByRole('region', { name: /Coming up/ })
+    .getByText('Paradox quiz')
+    .first()
+    .click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Register' }).click();
+  const pop = page.locator('dialog[open]');
+  await expect(pop.getByRole('img', { name: 'Quiz night banner' })).toHaveAttribute('src', banner);
+});
+
 test('a Super Admin picks PAN BS as the event scope', async ({ page }) => {
   const calls = await mockSupabase(page, {
     as: 'sa',

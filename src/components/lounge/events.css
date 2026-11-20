@@ -919,6 +919,22 @@
   height: 92px;
 }
 
+/* The form's own banner (spec 008) takes the art band's place, at its 3:1 shape. */
+:where(html.lounge-active) .evd-banner {
+  aspect-ratio: 3 / 1;
+  margin: -26px calc(-1 * clamp(18px, 4vw, 34px)) 18px;
+  background: var(--sky-0);
+  border-bottom: var(--kw) solid var(--keyline);
+  overflow: hidden;
+}
+
+:where(html.lounge-active) .evd-banner img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 :where(html.lounge-active) .evd-art img {
   position: relative;
   width: auto;
@@ -1101,7 +1117,9 @@
   margin-top: 18px;
 }
 
-:where(html.lounge-active) .evd-form label:not(.evd-opt):not(.evd-check),
+:where(html.lounge-active)
+  .evd-form
+  label:not(.evd-opt):not(.evd-check):not(.ff-check):not(.ff-other),
 :where(html.lounge-active) .evd-form legend {
   display: grid;
   gap: 6px;
@@ -1261,7 +1279,8 @@
 }
 
 :where(html.lounge-active) .evd-opt input,
-:where(html.lounge-active) .evd-check input {
+:where(html.lounge-active) .evd-check input,
+:where(html.lounge-active) .ff-check input {
   width: 18px;
   height: 18px;
   margin: 0;
@@ -1392,7 +1411,8 @@
 }
 
 @media (max-width: 759px) {
-  :where(html.lounge-active) .evd-art {
+  :where(html.lounge-active) .evd-art,
+  :where(html.lounge-active) .evd-banner {
     margin-top: -22px;
   }
 }
