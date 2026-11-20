@@ -31,6 +31,7 @@ import '../components/lounge/lounge.css';
 import '../components/lounge/events.css';
 import '../components/lounge/tour.css';
 import '../components/lounge/tokens.css';
+import '../components/lounge/scrollbars.css';
 import '../components/lounge/cards.css';
 import '../components/lounge/panels.css';
 

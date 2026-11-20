@@ -1,9 +1,11 @@
 # Sundarbans House — State
 
-> IITM BS frontend/backend · Last checkpoint: 2026-11-19 19:33 IST
+> IITM BS frontend/backend · Last checkpoint: 2026-11-20 14:56 IST
 
 ## In progress / next
 
+- **Custom scrollbars (try)** — branch `feat/ui-custom-scrollbars`, worktree `../SundarbansWeb-wt/custom-scrollbars`. Public + Lounge scrollbars; Raja verifies locally, then ship. See `sessions/2026-11-20.md`.
+- **PAN BS registration — PRs #236–#239 merged (last `191eb54`), migration `20261120180000_panbs_registration_invite.sql` live.** Guests get the form's WhatsApp invite as the last step; signed-in Register opens the Lounge form. Open question for Raja: show the invite on "Already registered" too (today only a fresh registration returns it).
 - **Lounge winter season — PR #235 merged (`e93da1d`).** Next: Raja is weighing a site-wide winter theme (public site deferred so far); decide scope before building. See `sessions/2026-11-19.md`.
 - **Leaderboard page** — uncommitted WIP in the main checkout on `feat/leaderboard-page` (spec `specs/006-leaderboard-points.md`). Don't disturb it.
 - **Mobile navbar repair — `fix/mobile-navigation`, worktree `~/Anuraj-dev/Frontend-mobile-navigation`, based on production main `519c075`.** Lounge header now uses two mobile columns; its bottom bar/header height switch together at 760px. Admin mobile destinations stay in normal flow with readable 12px text, spaced links and 32px action buttons. Public navbar audited without source changes. User requested fix, preview server, commit and PR. **Next:** Review the PR and required CI; deployment remains outside this request. See `sessions/2026-10-19.md`.
@@ -26,6 +28,7 @@
 - Lounge: `src/lib/lounge.js`, `src/components/lounge/`, `src/pages/{LoungePage,FormPage}.vue`.
 - Teams and Legacy: `src/pages/{TeamsPage,LegacyPage,TenureReadPage}.vue`, `src/data/`, `src/assets/legacy/`.
 - Public archive: `src/lib/events.js`, `src/data/events.data.js`.
+- PAN BS guest pop-up: `src/components/site/PanbsRegister.vue`; RPCs in `src/lib/lounge.js`. Dev mock: `?local-lounge=1` (`src/lib/local-lounge.js`), `&local-guest=1` = signed out, has two mock PAN BS events.
 
 ## Stack & run
 
@@ -51,3 +54,7 @@
 - Vite can retain stale scoped CSS after HMR; use a fresh page load for visual review.
 - Keep `padding: 0` on the Admin avatar button so its image fills the circle like Lounge's profile button.
 - The local shadow database diff stops at `20260928183510_revoke_rls_auto_enable_execute.sql` because Supabase's platform `public.rls_auto_enable()` is absent there; remote migrations were verified by the linked project and schema dump.
+- Migrations run in one session: a `pg_temp` helper redefined by a later migration must use `create or replace` (else `db push` fails).
+- Local Supabase (`project_id = "Frontend"`) has a diverged migration history; `migration up --local` refuses. Verify migrations in a throwaway copy with another `project_id`, plus a stub `public.rls_auto_enable()`.
+- In the local mock, auth only starts after visiting `#/lounge`; public pages look signed out until then.
+- Admin merges need `--admin` (branch policy requires a review); Raja runs that himself.

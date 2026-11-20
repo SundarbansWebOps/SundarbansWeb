@@ -1,0 +1,47 @@
+/* Scrollbars for the public site: a slim ink pill floating on the paper, which warms to marigold
+   when it is grabbed. Values come from tokens.css, so light, dark and the Resources dark room
+   follow on their own. The Members Lounge repaints these in components/lounge/scrollbars.css.
+
+   Chrome, Edge and Safari draw the ::-webkit-scrollbar parts below. Firefox has no such parts and
+   reads the standard properties instead; Chrome would let those override the parts, so they are
+   kept to browsers without them. A component that sets its own scrollbar-width or scrollbar-color
+   (hidden rails, the Resources window) keeps its own. */
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+/* The transparent border, clipped away, leaves the pill floating clear of the window edge. */
+::-webkit-scrollbar-thumb {
+  min-height: 40px;
+  border: 3px solid transparent;
+  border-radius: 99px;
+  background: var(--line-strong) padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ink-3);
+}
+::-webkit-scrollbar-thumb:active {
+  background-color: var(--mari);
+}
+/* The page's own bar sits on the paper, so it shows as part of the sheet. */
+html::-webkit-scrollbar-track {
+  background: var(--paper);
+}
+html::-webkit-scrollbar-thumb {
+  border-width: 3px 3px 3px 4px;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  :where(*) {
+    scrollbar-color: var(--line-strong) transparent;
+  }
+  html {
+    scrollbar-color: var(--line-strong) var(--paper);
+    scrollbar-width: thin;
+  }
+}
