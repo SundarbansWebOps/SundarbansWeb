@@ -36,9 +36,11 @@ const next = computed(
     ) ?? null
 );
 
-const kicker = computed(() =>
-  next.value?.stage === 'live' ? 'Live now · Join' : 'Upcoming session'
-);
+// An open form takes registrations; a PAN BS session without one is only announced.
+const kicker = computed(() => {
+  if (next.value?.stage === 'live') return 'Live now · Join';
+  return next.value?.registers ? 'Registrations open' : 'Upcoming session';
+});
 
 // The event sheet's own date and time format (times are IST, from the event's start).
 const when = computed(() => {
@@ -171,6 +173,7 @@ const label = computed(() =>
 }
 .when {
   font-size: 11px;
+  font-weight: 600;
   color: var(--pi2);
   font-variant-numeric: tabular-nums;
 }
