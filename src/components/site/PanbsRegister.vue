@@ -7,19 +7,8 @@
 -->
 <template>
   <div class="panbs-cta">
-    <!-- A real button even while loading: a tap now is kept and opens the form once it arrives. -->
-    <button
-      v-if="state === 'loading'"
-      type="button"
-      class="cta quiet"
-      aria-busy="true"
-      @click="wantOpen = true"
-    >
-      Loading…
-    </button>
-
     <a
-      v-else-if="state === 'join'"
+      v-if="state === 'join'"
       class="cta"
       :href="joinLink"
       target="_blank"
@@ -43,43 +32,40 @@
 
     <div v-else-if="state === 'closed'" class="cta quiet">Registration closed</div>
 
+    <button v-else-if="state === 'error'" type="button" class="cta quiet" @click="retry">
+      Couldn’t load the form. Try again
+    </button>
+
     <div v-else-if="state === 'done'" class="cta quiet ok" role="status">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.2 4L19 7" /></svg>
       {{ result?.registered ? 'You’re registered' : 'Already registered' }}
     </div>
 
-    <!-- Not a RouterLink: closing the sheet pops a history entry, and a push made at the same
-         time loses to it. The page change waits for the close (closeEvent's callback). -->
-    <a
-      v-else-if="signedIn"
+    <!-- One element from Loading to Register: swapping nodes mid-tap loses the click, so a tap
+         while loading is kept and acted on once the form arrives. -->
+    <button
+      v-else
+      type="button"
       class="cta"
-      :href="router.resolve(loungeForm).href"
-      @click.prevent="toForm"
-      ><svg class="bloom" viewBox="-12 -12 24 24" aria-hidden="true">
-        <ellipse
-          v-for="a in 8"
-          :key="a"
-          rx="2.1"
-          ry="4.6"
-          cy="-5.6"
-          :transform="`rotate(${a * 45})`"
-        />
-        <circle class="core" r="2.4" /></svg
-      ><span>Register</span></a
+      :class="{ quiet: state === 'loading' }"
+      :aria-busy="state === 'loading' || undefined"
+      @click="activate"
     >
-    <button v-else type="button" class="cta" @click="open">
-      <svg class="bloom" viewBox="-12 -12 24 24" aria-hidden="true">
-        <ellipse
-          v-for="a in 8"
-          :key="a"
-          rx="2.1"
-          ry="4.6"
-          cy="-5.6"
-          :transform="`rotate(${a * 45})`"
-        />
-        <circle class="core" r="2.4" />
-      </svg>
-      <span>Register</span>
+      <template v-if="state === 'loading'">Loading…</template>
+      <template v-else>
+        <svg class="bloom" viewBox="-12 -12 24 24" aria-hidden="true">
+          <ellipse
+            v-for="a in 8"
+            :key="a"
+            rx="2.1"
+            ry="4.6"
+            cy="-5.6"
+            :transform="`rotate(${a * 45})`"
+          />
+          <circle class="core" r="2.4" />
+        </svg>
+        <span>Register</span>
+      </template>
     </button>
 
     <dialog
@@ -181,7 +167,16 @@
                 <select v-model="answers[field.key]" :required="field.required" :disabled="busy">
                   <option value="">Choose</option>
                   <option v-for="o in field.options || []" :key="o" :value="o">{{ o }}</option>
+                  <option v-if="field.allow_other" :value="OTHER">Other</option>
                 </select>
+                <input
+                  v-if="field.allow_other && answers[field.key] === OTHER"
+                  v-model="otherText[field.key]"
+                  type="text"
+                  maxlength="300"
+                  :aria-label="`Other answer for ${field.label}`"
+                  :disabled="busy"
+                />
               </label>
               <fieldset v-else-if="field.type === 'multiselect'" class="f">
                 <legend>{{ field.label }} <small v-if="!field.required">optional</small></legend>
@@ -194,6 +189,18 @@
                   />
                   {{ o }}
                 </label>
+                <label v-if="field.allow_other" class="chk">
+                  <input v-model="otherOn[field.key]" type="checkbox" :disabled="busy" />
+                  Other
+                </label>
+                <input
+                  v-if="field.allow_other && otherOn[field.key]"
+                  v-model="otherText[field.key]"
+                  type="text"
+                  maxlength="300"
+                  :aria-label="`Other answer for ${field.label}`"
+                  :disabled="busy"
+                />
               </fieldset>
               <label v-else-if="field.type === 'checkbox'" class="chk">
                 <input v-model="answers[field.key]" type="checkbox" :disabled="busy" />
@@ -294,7 +301,7 @@ function remember(id) {
   }
 }
 
-const state = ref('loading'); // loading | join | ready | sending | done | closed
+const state = ref('loading'); // loading | join | ready | sending | done | closed | error
 const dlg = ref(null);
 const sent = ref(false); // the pop-up shows the result until it closes
 const joinLink = ref('');
@@ -304,6 +311,11 @@ const error = ref('');
 const tried = ref(false);
 const who = reactive({ name: '', email: '', house: '', phone: '' });
 const answers = reactive({});
+// "Other" for select and multiselect questions; sent as `Other:<text>`, which the server accepts
+// only for a question that allows it.
+const OTHER = '\u0000other';
+const otherOn = reactive({});
+const otherText = reactive({});
 
 const busy = computed(() => state.value === 'sending');
 const isLayout = (f) => f.type === 'section' || f.type === 'page_break';
@@ -334,7 +346,11 @@ const JOIN_LEAD = 15 * 60 * 1000;
 let timer = 0;
 let run = 0; // only the latest load may write state
 const wantOpen = ref(false); // Register was tapped before the form loaded
-onBeforeUnmount(() => clearTimeout(timer));
+onBeforeUnmount(() => {
+  clearTimeout(timer);
+  run++; // a response arriving after the sheet closed must not open anything
+  wantOpen.value = false;
+});
 
 function schedule(mine) {
   clearTimeout(timer);
@@ -349,6 +365,7 @@ async function poll(mine) {
   const link = await getPanbsJoinLink(props.e.dbId).catch(() => null);
   if (mine !== run) return;
   if (link && state.value !== 'sending') {
+    wantOpen.value = false;
     joinLink.value = link;
     state.value = 'join';
     return;
@@ -358,62 +375,88 @@ async function poll(mine) {
 
 // Separate sources compare by value. A getter returning a new array would re-run on every
 // refresh of the event list, closing an open pop-up and flashing Loading under the user.
-watch(
-  [() => props.e.dbId, () => props.e.stage],
-  async ([id]) => {
-    const mine = ++run;
-    clearTimeout(timer);
-    dlg.value?.close();
-    state.value = 'loading';
-    error.value = '';
-    tried.value = false;
-    sent.value = false;
-    wantOpen.value = false;
-    try {
-      // Both calls start together; the server releases the link only inside the join window,
-      // so it decides Join vs Register.
-      const saved = savedIds().includes(id);
-      const linkCall = getPanbsJoinLink(id).catch(() => null);
-      const formCall = props.e.registers && !saved ? getPanbsForm(id) : Promise.resolve(null);
-      formCall.catch(() => {}); // a failure is handled below, only if the form is needed
-      const link = await linkCall;
-      if (mine !== run) return;
-      if (link) {
-        joinLink.value = link;
-        state.value = 'join';
-        return;
-      }
-      // No link yet: registration stays open (also for a live event with no meeting link set).
-      if (props.e.stage !== 'past') schedule(mine);
-      if (saved) {
-        result.value = null;
-        state.value = 'done';
-        return;
-      }
-      const f = await formCall;
-      if (mine !== run) return;
-      form.value = f;
-      for (const k of Object.keys(answers)) delete answers[k];
-      for (const field of asked.value) {
-        answers[field.key] =
-          field.type === 'multiselect' ? [] : field.type === 'checkbox' ? false : '';
-      }
-      state.value = f ? 'ready' : 'closed';
-      if (f && wantOpen.value) {
-        wantOpen.value = false;
-        if (signedIn.value) toForm();
-        else open();
-      }
-    } catch {
-      if (mine === run) state.value = 'closed';
-    }
-  },
-  { immediate: true }
-);
+let loadedId = null;
+watch([() => props.e.dbId, () => props.e.stage, () => props.e.registers], ([id]) => {
+  // A refresh of the same event (say it just went live) leaves an open pop-up and its draft alone;
+  // the join poll still swaps in Join when the link arrives.
+  if (id === loadedId && (dlg.value?.open || state.value === 'sending')) return;
+  if (id !== loadedId) wantOpen.value = false; // a tap queued for another event is dropped
+  load();
+});
+load();
 
-const loungeForm = computed(() => `/lounge/forms/${form.value?.id}`);
+async function load() {
+  const id = props.e.dbId;
+  loadedId = id;
+  const mine = ++run;
+  clearTimeout(timer);
+  dlg.value?.close();
+  state.value = 'loading';
+  error.value = '';
+  tried.value = false;
+  sent.value = false;
+  try {
+    // Both calls start together; the server releases the link only inside the join window,
+    // so it decides Join vs Register. The device's guest record only applies to guests.
+    const saved = !signedIn.value && savedIds().includes(id);
+    const linkCall = getPanbsJoinLink(id).catch(() => null);
+    const formCall = props.e.registers && !saved ? getPanbsForm(id) : Promise.resolve(null);
+    formCall.catch(() => {}); // a failure is handled below, only if the form is needed
+    const link = await linkCall;
+    if (mine !== run) return;
+    if (link) {
+      wantOpen.value = false;
+      joinLink.value = link;
+      state.value = 'join';
+      return;
+    }
+    // No link yet: registration stays open (also for a live event with no meeting link set).
+    if (props.e.stage !== 'past') schedule(mine);
+    if (saved) {
+      wantOpen.value = false;
+      result.value = null;
+      state.value = 'done';
+      return;
+    }
+    const f = await formCall;
+    // A poll that found the link meanwhile wins over the form.
+    if (mine !== run || state.value === 'join') return;
+    form.value = f;
+    for (const k of Object.keys(answers)) delete answers[k];
+    for (const k of Object.keys(otherOn)) delete otherOn[k];
+    for (const k of Object.keys(otherText)) delete otherText[k];
+    for (const field of asked.value) {
+      answers[field.key] =
+        field.type === 'multiselect' ? [] : field.type === 'checkbox' ? false : '';
+    }
+    state.value = f ? 'ready' : 'closed';
+    if (!f) wantOpen.value = false;
+    else if (wantOpen.value) activate();
+  } catch {
+    // The form request failed (network, server): offer a retry instead of "closed".
+    if (mine === run) state.value = 'error';
+  }
+}
+
+function retry() {
+  wantOpen.value = true;
+  load();
+}
+
+function activate() {
+  if (state.value === 'loading') {
+    wantOpen.value = true;
+    return;
+  }
+  wantOpen.value = false;
+  if (signedIn.value) toForm();
+  else open();
+}
+
+// Closing the sheet pops a history entry; a push made at the same time loses to it, so the page
+// change waits for the close (closeEvent's callback).
 function toForm() {
-  const to = loungeForm.value;
+  const to = `/lounge/forms/${form.value.id}`;
   closeEvent(() => router.push(to));
 }
 
@@ -434,6 +477,14 @@ function toggle(key, opt, on) {
   answers[key] = on ? [...cur, opt] : cur.filter((x) => x !== opt);
 }
 
+function answerOut(f) {
+  const v = answers[f.key];
+  const other = `Other:${otherText[f.key]?.trim().slice(0, 300) ?? ''}`;
+  if (f.type === 'select' && v === OTHER) return other;
+  if (f.type === 'multiselect' && f.allow_other && otherOn[f.key]) return [...(v || []), other];
+  return v;
+}
+
 // A ten-digit Indian mobile gets +91; anything else goes as typed for the server to check.
 function phoneOut(raw) {
   const digits = raw.replace(/[\s-]/g, '');
@@ -446,8 +497,14 @@ function missing() {
   if (!who.house) return 'Choose your house.';
   if (phoneRequired.value && !who.phone) return 'Phone is required.';
   for (const f of asked.value) {
+    if (f.allow_other && answers[f.key] === OTHER && !otherText[f.key]?.trim()) {
+      return `Type your Other answer for ${f.label}.`;
+    }
+    if (f.allow_other && otherOn[f.key] && !otherText[f.key]?.trim()) {
+      return `Type your Other answer for ${f.label}.`;
+    }
     if (!f.required) continue;
-    const v = answers[f.key];
+    const v = answerOut(f);
     if (Array.isArray(v) ? !v.length : !String(v ?? '').trim() || v === false) {
       return `${f.label} is required.`;
     }
@@ -467,7 +524,7 @@ async function send() {
       name: who.name,
       house: who.house,
       phone: who.phone ? phoneOut(who.phone) : null,
-      answers: Object.fromEntries(asked.value.map(({ key }) => [key, answers[key]])),
+      answers: Object.fromEntries(asked.value.map((f) => [f.key, answerOut(f)])),
     });
     remember(props.e.dbId);
     sent.value = true;

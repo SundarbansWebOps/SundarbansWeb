@@ -261,7 +261,11 @@ export function openEvent(id, e) {
           : { x: innerWidth / 2, y: innerHeight / 2 };
       })();
   const route = router.currentRoute.value;
-  const to = { query: { ...route.query, event: id }, hash: route.hash, state: { event: true } };
+  // `event: true` marks an entry this sheet pushed, so closing can go Back to the page beneath.
+  // Stepping replaces the entry and keeps its mark: a sheet opened from a shared link has no
+  // entry of ours beneath it, and Back would leave the site.
+  const event = ev.open ? !!history.state?.event : true;
+  const to = { query: { ...route.query, event: id }, hash: route.hash, state: { event } };
   if (ev.open) router.replace(to);
   else router.push(to);
   ev.open = id;
@@ -271,10 +275,17 @@ export function openEvent(id, e) {
 // page change doesn't race the back navigation. Template handlers must not pass
 // their DOM event through (@click="closeEvent()"): only a real callback is kept.
 let afterClose = null;
+let popping = false; // a Back is on its way; a second one would leave the page beneath too
 export function closeEvent(then) {
+  if (popping) {
+    if (typeof then === 'function') afterClose = then;
+    return;
+  }
   afterClose = typeof then === 'function' ? then : null;
-  if (history.state?.event) history.back();
-  else {
+  if (history.state?.event) {
+    popping = true;
+    history.back();
+  } else {
     ev.open = null;
     const route = router.currentRoute.value;
     const query = { ...route.query };
@@ -283,6 +294,7 @@ export function closeEvent(then) {
   }
 }
 function runAfterClose() {
+  popping = false;
   const f = afterClose;
   afterClose = null;
   if (typeof f === 'function') f();
@@ -291,7 +303,8 @@ function runAfterClose() {
 // The URL is the source of truth: Back drops ?event= and the sheet closes; a shared
 // ?event= link (or Forward) opens it.
 watch(
-  () => [router.currentRoute.value.query.event, events.length, live.length, upcoming.length],
+  // byId[id] itself is read so a refreshed catalog that adds the shared event opens it.
+  () => [router.currentRoute.value.query.event, !!byId[router.currentRoute.value.query.event]],
   ([id]) => {
     if (id && byId[id]) {
       if (ev.open !== id) {
