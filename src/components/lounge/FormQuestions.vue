@@ -52,6 +52,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, reactive, ref, useId, watch } from 'vue';
 import { listPendingFormFiles } from '../../lib/form-files.js';
+import { isHouseRow } from '../../lib/lounge.js';
 import FormFields from './FormFields.vue';
 import FormFileField from './FormFileField.vue';
 
@@ -76,6 +77,8 @@ const pages = computed(() => {
   const result = [[]];
   for (const field of props.form.fields ?? []) {
     if (field.type === 'page_break') result.push([]);
+    // Members are Sundarbans; the PAN BS house picker is only for signed-out guests.
+    else if (isHouseRow(field)) continue;
     else result.at(-1).push({ field, fields: [field] });
   }
   return result;

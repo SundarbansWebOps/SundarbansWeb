@@ -6,6 +6,7 @@ import { decodeFileAnswer } from './form-files.js';
 import { supabase } from './supabase.js';
 import { auth, isHead, isRc, isSuperAdmin } from './auth.js';
 import {
+  isHouseRow,
   exportEventRecords as loungeExportEventRecords,
   exportFormResponses as loungeExportFormResponses,
   listFormGuests as loungeListFormGuests,
@@ -43,6 +44,45 @@ export const FORM_FIELD_TYPES = [
   'multiselect',
 ];
 export const PREFILL_KEYS = ['name', 'phone', 'email'];
+// The questions every PAN BS registration asks first (spec 007). They live in the form's field
+// list marked `fixed`, so organizers can reword them; the public pop-up and the server still own
+// how they are answered. Name, email and phone prefill like any question. The house row is never
+// answered as a question: the pop-up sends the house separately, and members never see it.
+// Its options mirror private.iitm_houses() only so the server's select validation accepts the row.
+export const PANBS_DEFAULTS = [
+  { fixed: 'name', key: 'name', label: 'Name', type: 'text', prefill: 'name', required: true },
+  {
+    fixed: 'email',
+    key: 'email',
+    label: 'Student email',
+    type: 'email',
+    prefill: 'email',
+    required: true,
+  },
+  { fixed: 'house', key: 'house', label: 'Your house', type: 'select', required: false },
+  {
+    fixed: 'phone',
+    key: 'phone',
+    label: 'Phone',
+    type: 'phone',
+    prefill: 'phone',
+    required: false,
+  },
+];
+export const IITM_HOUSES = [
+  'Bandipur',
+  'Corbett',
+  'Gir',
+  'Kanha',
+  'Kaziranga',
+  'Namdapha',
+  'Nallamala',
+  'Nilgiri',
+  'Pichavaram',
+  'Saranda',
+  'Sundarbans',
+  'Wayanad',
+];
 export const MEET_ELIGIBLE_SECONDS = 1200;
 export const TEMPLATE_MAX_BYTES = 10485760;
 export const TEMPLATE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
@@ -876,7 +916,8 @@ export function formResponsesToCsv(payload) {
   const byIdentity = new Map();
   for (const row of rows) {
     for (const field of row.field_schema || []) {
-      if (!field?.key || ['section', 'page_break'].includes(field.type)) continue;
+      if (!field?.key || ['section', 'page_break'].includes(field.type) || isHouseRow(field))
+        continue;
       const identity = JSON.stringify([field.key, field.label || field.key, field.type || '']);
       if (byIdentity.has(identity)) continue;
       const column = `answer:${identity}`;

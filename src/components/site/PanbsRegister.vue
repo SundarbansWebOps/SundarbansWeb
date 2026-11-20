@@ -107,7 +107,8 @@
 
           <div class="fields">
             <label class="f">
-              <span>Name</span>
+              <span>{{ label('name') }}</span>
+              <small v-if="help('name')">{{ help('name') }}</small>
               <input
                 v-model.trim="who.name"
                 required
@@ -117,7 +118,8 @@
               />
             </label>
             <label class="f">
-              <span>Student email</span>
+              <span>{{ label('email') }}</span>
+              <small v-if="help('email')">{{ help('email') }}</small>
               <input
                 v-model.trim="who.email"
                 type="email"
@@ -131,14 +133,16 @@
               <small v-if="emailBad" class="bad">Use your IITM email only.</small>
             </label>
             <label class="f">
-              <span>Your house</span>
+              <span>{{ label('house') }}</span>
+              <small v-if="help('house')">{{ help('house') }}</small>
               <select v-model="who.house" required :disabled="busy">
                 <option value="">Choose</option>
                 <option v-for="h in form.houses" :key="h" :value="h">{{ h }}</option>
               </select>
             </label>
             <label class="f">
-              <span>Phone <small v-if="!phoneRequired">optional</small></span>
+              <span>{{ label('phone') }} <small v-if="!phoneRequired">optional</small></span>
+              <small v-if="help('phone')">{{ help('phone') }}</small>
               <input
                 v-model.trim="who.phone"
                 :required="phoneRequired"
@@ -236,7 +240,12 @@ import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { closeEvent, fullDate, img } from '../../lib/events.js';
 import { POSTER_ART } from '../../lib/art.js';
 import { signedIn, signInWithGoogle } from '../../lib/auth.js';
-import { getPanbsForm, getPanbsJoinLink, submitPanbsRegistration } from '../../lib/lounge.js';
+import {
+  getPanbsForm,
+  getPanbsJoinLink,
+  isHouseRow,
+  submitPanbsRegistration,
+} from '../../lib/lounge.js';
 
 const props = defineProps({ e: { type: Object, required: true } });
 
@@ -244,6 +253,9 @@ const props = defineProps({ e: { type: Object, required: true } });
 const STUDENT_EMAIL = /^[a-z0-9._%+-]+@([a-z0-9-]+\.)*study\.iitm\.ac\.in$/i;
 // Name, email and phone come from the fixed fields; the server copies them into prefill fields.
 const FIXED = new Set(['name', 'email', 'phone']);
+// Organizers can reword the fixed fields in the form builder (PANBS_DEFAULTS in admin.js); older
+// forms without those rows keep these words.
+const FIXED_LABEL = { name: 'Name', email: 'Student email', house: 'Your house', phone: 'Phone' };
 
 // This browser remembers which PANBS events it registered for, so a refresh still says
 // "Already registered" (no account to look it up by). The server's one-per-email rule stays the
@@ -277,12 +289,16 @@ const answers = reactive({});
 
 const busy = computed(() => state.value === 'sending');
 const isLayout = (f) => f.type === 'section' || f.type === 'page_break';
+const fixedRow = (k) =>
+  (form.value?.fields || []).find((f) => (k === 'house' ? isHouseRow(f) : f.prefill === k));
+const label = (k) => fixedRow(k)?.label || FIXED_LABEL[k];
+const help = (k) => fixedRow(k)?.description || '';
 const guestQuestions = computed(() =>
-  (form.value?.fields || []).filter((f) => !isLayout(f) && f.type !== 'file')
+  (form.value?.fields || []).filter((f) => !isLayout(f) && f.type !== 'file' && !isHouseRow(f))
 );
 const blocks = computed(() =>
   (form.value?.fields || []).filter(
-    (f) => isLayout(f) || (f.type !== 'file' && !FIXED.has(f.prefill))
+    (f) => isLayout(f) || (f.type !== 'file' && !isHouseRow(f) && !FIXED.has(f.prefill))
   )
 );
 const asked = computed(() => blocks.value.filter((f) => !isLayout(f)));

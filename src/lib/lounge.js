@@ -66,6 +66,9 @@ export const listPublicPastEvents = () => rpc('list_public_past_events');
 // past-only RPC while a database without list_public_events is still deployed.
 export const listPublicEvents = () => rpc('list_public_events').catch(() => listPublicPastEvents());
 // PANBS: public registration for events open to all IITM BS (spec 007). Callable signed out.
+// The fixed house row only labels the pop-up's house picker; it holds no answer and members never
+// see it (see PANBS_DEFAULTS in admin.js).
+export const isHouseRow = (field) => field?.fixed === 'house';
 export const getPanbsForm = (eventId) => rpc('get_panbs_form', { p_event_id: eventId });
 export const getPanbsJoinLink = (eventId) => rpc('get_panbs_join_link', { p_event_id: eventId });
 export const submitPanbsRegistration = ({

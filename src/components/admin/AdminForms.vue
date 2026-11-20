@@ -293,11 +293,12 @@
             <li v-for="(field, i) in form.fields" :key="field._id" class="adm-card question">
               <div class="question-head">
                 <span class="adm-kicker">{{ blockKind(field) }}</span>
-                <div class="adm-chips">
+                <span v-if="field.fixed" class="adm-note fixed-note">{{ FIXED_NOTE }}</span>
+                <div v-else class="adm-chips">
                   <button
                     type="button"
                     class="adm-btn ghost small"
-                    :disabled="i === 0"
+                    :disabled="i === fixedCount"
                     @click="move(i, -1)"
                   >
                     Move up
@@ -339,7 +340,7 @@
                     >For your reference. Members see “Page n of m”.</small
                   >
                 </label>
-                <label v-if="isQuestion(field)" class="adm-field">
+                <label v-if="isQuestion(field) && !field.fixed" class="adm-field">
                   <span>Answer type</span>
                   <AdminSelect v-model="field.type" :options="TYPE_OPTIONS" />
                 </label>
@@ -349,18 +350,24 @@
                 </label>
                 <div v-if="field.type !== 'section' && field.type !== 'page_break'" class="checks">
                   <label class="adm-check">
-                    <input v-model="field.required" type="checkbox" />
+                    <input
+                      v-if="field.fixed && field.fixed !== 'phone'"
+                      type="checkbox"
+                      checked
+                      disabled
+                    />
+                    <input v-else v-model="field.required" type="checkbox" />
                     <span>Required</span>
                   </label>
-                  <label v-if="isChoice(field)" class="adm-check">
+                  <label v-if="isChoice(field) && !field.fixed" class="adm-check">
                     <input v-model="field.allow_other" type="checkbox" />
                     <span>Allow “Other”</span>
                   </label>
                 </div>
-                <label v-if="isChoice(field)" class="adm-field wide">
-                  <span>Options (one per line)</span>
-                  <textarea v-model="field.optionsText" class="adm-input" />
-                </label>
+                <AdminOptionList v-if="isChoice(field) && !field.fixed" v-model="field.options" />
+                <p v-if="field.fixed === 'house'" class="adm-note wide">
+                  Guests pick from the 12 IITM BS houses.
+                </p>
                 <template v-if="field.type === 'file'">
                   <label class="adm-field">
                     <span>Accept</span>
@@ -380,7 +387,7 @@
                     <small>1 to 10 files per member.</small>
                   </label>
                 </template>
-                <details class="advanced wide">
+                <details v-if="!field.fixed" class="advanced wide">
                   <summary>Advanced</summary>
                   <div class="adm-form advanced-body">
                     <label class="adm-field">
@@ -754,11 +761,15 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, useId, watch } fro
 import AdminDialog from './AdminDialog.vue';
 import AdminSelect from './AdminSelect.vue';
 import AdminCohortSelect from './AdminCohortSelect.vue';
+import AdminOptionList from './AdminOptionList.vue';
+import { isHouseRow } from '../../lib/lounge.js';
 import { askConfirm } from '../../lib/admin-confirm.js';
 import { decodeFileAnswer, fetchFormFileBlob, uploadFormBanner } from '../../lib/form-files.js';
 import { auth, errorText, isRc, isSuperAdmin } from '../../lib/auth.js';
 import {
   FORM_FIELD_TYPES,
+  IITM_HOUSES,
+  PANBS_DEFAULTS,
   cancelRequest,
   deleteLoungeForm,
   PREFILL_KEYS,
@@ -900,7 +911,7 @@ const shownGuests = computed(() =>
 // Questions from the newest guest row's schema, minus the fixed name/email/phone columns.
 const guestFields = computed(() =>
   (guests.value.at(-1)?.field_schema ?? []).filter(
-    (f) => !['name', 'email', 'phone'].includes(f.prefill)
+    (f) => !['name', 'email', 'phone'].includes(f.prefill) && !isHouseRow(f)
   )
 );
 function guestAnswer(g, f) {
@@ -1056,7 +1067,28 @@ const toLocal = (iso) => {
 const fromLocal = (v) => (v ? new Date(v).toISOString() : null);
 const isChoice = (field) => field.type === 'select' || field.type === 'multiselect';
 const isQuestion = (field) => !['file', 'section', 'page_break'].includes(field.type);
-const blockKind = (field) => BLOCK_KIND[field.type] ?? 'Question';
+const blockKind = (field) =>
+  field.fixed ? 'PAN BS default' : (BLOCK_KIND[field.type] ?? 'Question');
+const FIXED_NOTE = 'Asked first on every PAN BS registration. You can reword it.';
+// A form bound to a PAN BS event shows the registration's fixed questions as its first rows.
+const isPanbsForm = computed(
+  () =>
+    form.value?.scope === 'event' &&
+    !!events.value.find((event) => event.id === form.value.event_id)?.panbs
+);
+const fixedCount = computed(() => form.value?.fields.filter((f) => f.fixed).length ?? 0);
+// Choice questions need at least one option, all different (the server needs one; duplicates
+// would make two answers look the same).
+const optionsProblem = computed(() => {
+  for (const f of form.value?.fields ?? []) {
+    if (!isChoice(f) || f.fixed) continue;
+    const opts = f.options.map((o) => o.trim().toLowerCase()).filter(Boolean);
+    const name = f.label || 'A choice question';
+    if (!opts.length) return `${name} needs at least one option.`;
+    if (new Set(opts).size !== opts.length) return `${name} has the same option twice.`;
+  }
+  return '';
+});
 // Same rules the server enforces. Shown while editing and blocks saving.
 const layoutProblem = computed(() => {
   const fields = form.value?.fields ?? [];
@@ -1125,8 +1157,9 @@ function wrapField(f) {
     type: f.type,
     required: !!f.required,
     prefill: f.prefill || '',
+    fixed: f.fixed || '',
     allow_other: !!f.allow_other,
-    optionsText: (f.options || []).join('\n'),
+    options: [...(f.options || [])],
     description: f.description || '',
     accept: f.accept || 'any',
     max_files: f.max_files || 1,
@@ -1216,6 +1249,43 @@ watch(
   }
 );
 
+// Put the PAN BS defaults at the top of a PAN BS form, reusing questions that already take the
+// name, email or phone. Leaving PAN BS drops the house row and turns the rest into ordinary questions.
+watch(
+  () => [form.value, isPanbsForm.value],
+  ([f, panbs]) => {
+    if (!f) return;
+    // Event list failed to load: leave the rows alone rather than drop a PAN BS form's defaults.
+    if (f.scope === 'event' && f.event_id && !events.value.some((e) => e.id === f.event_id)) return;
+    if (!panbs) {
+      f.fields = f.fields.filter((x) => !isHouseRow(x));
+      for (const x of f.fields) x.fixed = '';
+      return;
+    }
+    const rest = [...f.fields];
+    const top = PANBS_DEFAULTS.map((d) => {
+      const take = (pred) => {
+        const i = rest.findIndex(pred);
+        return i < 0 ? null : rest.splice(i, 1)[0];
+      };
+      const row =
+        take((x) => x.fixed === d.fixed) ||
+        (d.prefill && take((x) => x.prefill === d.prefill)) ||
+        // The server allows one phone question per form.
+        (d.fixed === 'phone' && take((x) => x.type === 'phone'));
+      if (row)
+        return Object.assign(row, { fixed: d.fixed, type: d.type, prefill: d.prefill || '' });
+      return wrapField(d);
+    });
+    for (const row of top) {
+      const used = [...top, ...rest].filter((x) => x !== row).map((x) => x.key);
+      if (used.includes(row.key)) row.key = fieldKeyFromLabel(row.key, used);
+    }
+    f.fields = [...top, ...rest];
+  },
+  { immediate: true }
+);
+
 function onEditorClose() {
   form.value = null;
   if (openedFromEvent.value) {
@@ -1295,19 +1365,22 @@ function fieldPayload(field, pageNo) {
   }
   if (field.prefill) row.prefill = field.prefill;
   if (field.type === 'select' || field.type === 'multiselect') {
-    row.options = field.optionsText
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .filter(Boolean);
+    row.options = field.options.map((s) => s.trim()).filter(Boolean);
     if (field.allow_other) row.allow_other = true;
+  }
+  if (field.fixed) {
+    row.fixed = field.fixed;
+    // The pop-up always asks name, email and house; the house row holds no answer.
+    row.required = field.fixed === 'phone' ? !!field.required : field.fixed !== 'house';
+    if (field.fixed === 'house') row.options = IITM_HOUSES;
   }
   return row;
 }
 
 async function save(mode) {
   formError.value = '';
-  if (layoutProblem.value) {
-    formError.value = layoutProblem.value;
+  if (layoutProblem.value || optionsProblem.value) {
+    formError.value = layoutProblem.value || optionsProblem.value;
     return;
   }
   if (form.value.scope === 'event') {
@@ -1791,6 +1864,10 @@ function downloadResponses() {
 }
 .question-head .adm-kicker {
   margin: 0;
+}
+.question-head .fixed-note {
+  margin: 0;
+  font-size: 12px;
 }
 .advanced {
   padding-top: 10px;

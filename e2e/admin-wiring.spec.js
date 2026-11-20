@@ -322,7 +322,10 @@ test('form builder keeps field order, types, options and a post-submit invite', 
   await dialog.getByRole('button', { name: 'Add question' }).click();
   await dialog.getByLabel('Question', { exact: true }).fill('Which games');
   await pick(dialog, 'Answer type', 'Choose many');
-  await dialog.getByLabel('Options (one per line)').fill('Valorant\nBGMI');
+  // WhatsApp-poll style: typing in the last option opens the next one.
+  await dialog.getByLabel('Option 1', { exact: true }).fill('Valorant');
+  await dialog.getByLabel('Option 2', { exact: true }).fill('BGMI');
+  await expect(dialog.getByLabel('Option 3', { exact: true })).toHaveValue('');
   await dialog.getByText('Allow “Other”').click();
   await dialog.getByRole('button', { name: 'Publish' }).click();
   const saved = await callTo(calls, '/rest/v1/rpc/save_lounge_form');
@@ -337,6 +340,65 @@ test('form builder keeps field order, types, options and a post-submit invite', 
     allow_other: true,
     options: ['Valorant', 'BGMI'],
   });
+});
+
+test('a PAN BS form shows its fixed registration questions first and saves rewordings', async ({
+  page,
+}) => {
+  const eventId = 'e0000000-0000-4000-8000-0000000000b1';
+  const formId = 'f0000000-0000-4000-8000-0000000000b1';
+  const later = new Date(Date.now() + 7 * 864e5).toISOString();
+  const calls = await mockSupabase(page, {
+    as: 'sa',
+    data: {
+      events: [
+        {
+          id: eventId,
+          name: 'Open mic',
+          panbs: true,
+          is_public: true,
+          entry_mode: 'form',
+          published_at: new Date().toISOString(),
+          starts_at: later,
+          ends_at: later,
+          archive: false,
+        },
+      ],
+      // An older PAN BS form: its own name question is reused as the Name default.
+      list_lounge_forms: [
+        {
+          id: formId,
+          title: 'Open mic',
+          event_id: eventId,
+          published_at: null,
+          is_open: true,
+          can_manage: true,
+          fields: [
+            { key: 'act', label: 'Your act', type: 'text', required: true },
+            { key: 'full_name', label: 'Full name', type: 'text', prefill: 'name' },
+          ],
+        },
+      ],
+      save_lounge_form: formId,
+    },
+  });
+  await page.goto('/#/admin?tab=forms');
+  await page.getByRole('button', { name: 'Edit' }).click();
+  const dialog = page.getByRole('dialog');
+  const questions = dialog.locator('.question');
+  await expect(questions.filter({ hasText: 'PAN BS default' })).toHaveCount(4);
+  await expect(questions.nth(4).getByLabel('Question', { exact: true })).toHaveValue('Your act');
+  await questions.nth(1).getByLabel('Question', { exact: true }).fill('IITM email');
+  await questions.nth(3).getByText('Required').click();
+  await dialog.getByRole('button', { name: 'Save draft' }).click();
+  const saved = await callTo(calls, '/rest/v1/rpc/save_lounge_form');
+  const fields = JSON.parse(saved.body).p_form.fields;
+  expect(fields.map((f) => f.fixed ?? null)).toEqual(['name', 'email', 'house', 'phone', null]);
+  expect(fields[0]).toMatchObject({ key: 'full_name', label: 'Full name', prefill: 'name' });
+  expect(fields[1]).toMatchObject({ label: 'IITM email', type: 'email', required: true });
+  expect(fields[2]).toMatchObject({ type: 'select', required: false });
+  expect(fields[2].options).toHaveLength(12);
+  expect(fields[3]).toMatchObject({ type: 'phone', prefill: 'phone', required: true });
 });
 
 test('attendance preview classifies Meet rows before save', async ({ page }) => {
