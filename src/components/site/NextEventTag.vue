@@ -27,13 +27,12 @@ defineProps({
   still: { type: Boolean, default: false },
 });
 
-// A live gathering first, then the next PAN BS registration, then whatever is soonest.
-const next = computed(() => live[0] ?? upcoming.find((e) => e.panbs) ?? upcoming[0] ?? null);
+// PAN BS sessions only (guests can register from the sheet): one on air first, then the soonest.
+const next = computed(() => [...live, ...upcoming].find((e) => e.panbs) ?? null);
 
-const kicker = computed(() => {
-  if (next.value?.stage === 'live') return 'Live now · Join';
-  return next.value?.panbs ? 'Registrations open' : 'Next';
-});
+const kicker = computed(() =>
+  next.value?.stage === 'live' ? 'Live now · Join' : 'Registrations open'
+);
 
 // The event sheet's own date and time format (times are IST, from the event's start).
 const when = computed(() => {
