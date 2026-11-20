@@ -7,7 +7,16 @@
 -->
 <template>
   <div class="panbs-cta">
-    <div v-if="state === 'loading'" class="cta quiet" aria-busy="true">Loading…</div>
+    <!-- A real button even while loading: a tap now is kept and opens the form once it arrives. -->
+    <button
+      v-if="state === 'loading'"
+      type="button"
+      class="cta quiet"
+      aria-busy="true"
+      @click="wantOpen = true"
+    >
+      Loading…
+    </button>
 
     <a
       v-else-if="state === 'join'"
@@ -320,6 +329,7 @@ const phoneRequired = computed(() =>
 const JOIN_LEAD = 15 * 60 * 1000;
 let timer = 0;
 let run = 0; // only the latest load may write state
+const wantOpen = ref(false); // Register was tapped before the form loaded
 onBeforeUnmount(() => clearTimeout(timer));
 
 function schedule(mine) {
@@ -342,8 +352,10 @@ async function poll(mine) {
   schedule(mine);
 }
 
+// Separate sources compare by value. A getter returning a new array would re-run on every
+// refresh of the event list, closing an open pop-up and flashing Loading under the user.
 watch(
-  () => [props.e.dbId, props.e.stage],
+  [() => props.e.dbId, () => props.e.stage],
   async ([id]) => {
     const mine = ++run;
     clearTimeout(timer);
@@ -352,9 +364,15 @@ watch(
     error.value = '';
     tried.value = false;
     sent.value = false;
+    wantOpen.value = false;
     try {
-      // The server releases the link only inside the join window, so it decides Join vs Register.
-      const link = await getPanbsJoinLink(id).catch(() => null);
+      // Both calls start together; the server releases the link only inside the join window,
+      // so it decides Join vs Register.
+      const saved = savedIds().includes(id);
+      const linkCall = getPanbsJoinLink(id).catch(() => null);
+      const formCall = props.e.registers && !saved ? getPanbsForm(id) : Promise.resolve(null);
+      formCall.catch(() => {}); // a failure is handled below, only if the form is needed
+      const link = await linkCall;
       if (mine !== run) return;
       if (link) {
         joinLink.value = link;
@@ -363,12 +381,12 @@ watch(
       }
       // No link yet: registration stays open (also for a live event with no meeting link set).
       if (props.e.stage !== 'past') schedule(mine);
-      if (savedIds().includes(id)) {
+      if (saved) {
         result.value = null;
         state.value = 'done';
         return;
       }
-      const f = props.e.registers ? await getPanbsForm(id) : null;
+      const f = await formCall;
       if (mine !== run) return;
       form.value = f;
       for (const k of Object.keys(answers)) delete answers[k];
@@ -377,6 +395,10 @@ watch(
           field.type === 'multiselect' ? [] : field.type === 'checkbox' ? false : '';
       }
       state.value = f ? 'ready' : 'closed';
+      if (f && wantOpen.value) {
+        wantOpen.value = false;
+        if (!signedIn.value) open();
+      }
     } catch {
       if (mine === run) state.value = 'closed';
     }
@@ -385,7 +407,8 @@ watch(
 );
 
 async function open() {
-  dlg.value?.showModal();
+  if (!dlg.value || dlg.value.open) return;
+  dlg.value.showModal();
   await nextTick();
   dlg.value?.querySelector('input')?.focus();
 }
