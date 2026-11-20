@@ -77,6 +77,8 @@ test('a signed-out student registers for a PANBS event on the event page', async
   await pop.getByLabel(/Phone/).fill('98765 43210');
   await pop.getByRole('button', { name: 'Count me in' }).click();
   await expect(pop.getByRole('status')).toContainText('You’re registered');
+  // This form has no WhatsApp group, so there is no invite step.
+  await expect(pop.getByRole('link', { name: /WhatsApp/ })).toHaveCount(0);
   await pop.getByRole('button', { name: 'Done' }).click();
   // Closing the pop-up keeps the sheet open, now marked registered.
   await expect(sheet.getByRole('status')).toContainText('You’re registered');
@@ -98,6 +100,32 @@ test('a signed-out student registers for a PANBS event on the event page', async
   await page.reload();
   await expect(page.getByRole('dialog').getByRole('status')).toContainText('Already registered');
   await expect(page.getByRole('dialog').getByRole('button', { name: 'Register' })).toHaveCount(0);
+});
+
+test('a guest gets the form’s WhatsApp invite as the last step', async ({ page }) => {
+  const invite = 'https://chat.whatsapp.com/AbC123';
+  await mockSupabase(page, {
+    signedIn: false,
+    data: {
+      list_public_events: [PANBS_EVENT],
+      get_panbs_join_link: null,
+      get_panbs_form: FORM,
+      submit_panbs_registration: { registered: true, invite_url: invite },
+    },
+  });
+  await page.goto(`/#/events?event=${EVENT_ID}`);
+  await page.getByRole('dialog').getByRole('button', { name: 'Register' }).click();
+  const pop = page.locator('dialog[open].pop');
+  await pop.getByLabel('Name', { exact: true }).fill('Guest One');
+  await pop.getByLabel('Student email').fill('21f1000001@ds.study.iitm.ac.in');
+  await pop.getByLabel('Your house').selectOption('Nallamala');
+  await pop.getByLabel('Level').selectOption('Degree');
+  await pop.getByRole('button', { name: 'Count me in' }).click();
+  const link = pop.getByRole('link', { name: /Open WhatsApp invite/ });
+  await expect(link).toHaveAttribute('href', invite);
+  await expect(link).toHaveAttribute('target', '_blank');
+  await pop.getByRole('button', { name: 'Done' }).click();
+  await expect(pop).toHaveCount(0);
 });
 
 test('the PANBS pop-up shows the form banner in place of the event poster', async ({ page }) => {

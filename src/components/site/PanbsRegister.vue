@@ -97,8 +97,17 @@
             <svg viewBox="0 0 24 24"><path d="m5 12.5 4.2 4L19 7" /></svg>
           </span>
           <h2 id="pop-h">{{ result?.registered ? 'You’re registered' : 'Already registered' }}</h2>
-          <p class="sub">Join from this page when it starts.</p>
-          <button type="button" class="cta" @click="dlg.close()">Done</button>
+          <template v-if="result?.invite_url">
+            <p class="sub">Last step: join the event’s WhatsApp group.</p>
+            <a class="cta" :href="result.invite_url" target="_blank" rel="noopener noreferrer">
+              Open WhatsApp invite <span aria-hidden="true">→</span>
+            </a>
+            <button type="button" class="cta second" @click="dlg.close()">Done</button>
+          </template>
+          <template v-else>
+            <p class="sub">Join from this page when it starts.</p>
+            <button type="button" class="cta" @click="dlg.close()">Done</button>
+          </template>
         </div>
 
         <form v-else class="inner" novalidate @submit.prevent="send">
@@ -628,6 +637,13 @@ async function logIn() {
   color: var(--ink-2);
   font-weight: 600;
   cursor: default;
+}
+/* The secondary action beside a primary one (Done under the WhatsApp invite). */
+.cta.second,
+.cta.second:hover {
+  border-color: var(--line-strong);
+  background: transparent;
+  color: var(--ink);
 }
 .cta.ok {
   border-style: solid;

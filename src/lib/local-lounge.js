@@ -1,7 +1,8 @@
 // Synthetic loopback fixtures for local end-to-end exploration. Never sends a database request.
 // Unsupported operations fail visibly rather than pretending that the real backend passed.
 const params = new URLSearchParams(location.search);
-const KEY = `sundarbans-local-lounge:v2:${params.get('local-region') || '1'}:${params.get('local-tour') || '0'}`;
+const guest = params.get('local-guest') === '1'; // start signed out, as a public visitor
+const KEY = `sundarbans-local-lounge:v3:${params.get('local-region') || '1'}:${params.get('local-tour') || '0'}:${guest ? 'guest' : 'member'}`;
 const regions = [
   { id: 1, code: 'region_01', name: 'Patna' },
   { id: 2, code: 'region_02', name: 'Delhi NCR' },
@@ -20,8 +21,57 @@ const groupIds = [
   '4f142402-d390-512b-89e3-8193705b809e',
   'ef6e5e79-5ea5-56dc-b81e-b5c75373694c',
 ];
+// PAN BS events: open to all IITM BS, public registration through a form. One form carries a
+// WhatsApp invite, the other does not, so both endings of the guest flow can be tried.
+const panbsFields = [
+  {
+    key: 'level',
+    label: 'Your level',
+    type: 'select',
+    required: true,
+    options: ['Foundation', 'Diploma', 'Degree'],
+    allow_other: true,
+  },
+  { key: 'ask', label: 'One question for the speaker', type: 'text', required: false },
+];
+const panbs = [
+  {
+    id: '55555555-5555-4555-8555-555555555555',
+    form_id: '66666666-6666-4666-8666-666666666666',
+    name: 'Mock PAN BS: Resume clinic (has WhatsApp group)',
+    description:
+      'Local test fixture. Register as a guest; the last step shows the WhatsApp invite.',
+    starts_at: iso(30),
+    ends_at: iso(32),
+    invite_url: 'https://chat.whatsapp.com/LocalMockInvite123',
+  },
+  {
+    id: '77777777-7777-4777-8777-777777777777',
+    form_id: '88888888-8888-4888-8888-888888888888',
+    name: 'Mock PAN BS: Python Q&A (no WhatsApp group)',
+    description: 'Local test fixture. No invite on this form, so registration ends without one.',
+    starts_at: iso(54),
+    ends_at: iso(56),
+    invite_url: null,
+  },
+];
+const houses = [
+  'Bandipur',
+  'Corbett',
+  'Gir',
+  'Kanha',
+  'Kaziranga',
+  'Namdapha',
+  'Nallamala',
+  'Nilgiri',
+  'Pichavaram',
+  'Saranda',
+  'Sundarbans',
+  'Wayanad',
+];
 const defaults = {
-  signedIn: true,
+  signedIn: !guest,
+  guests: [],
   profile: {
     id: 'a9000000-0000-4000-8000-000000000004',
     member_code: '99f9000004',
@@ -66,6 +116,19 @@ const defaults = {
       accepting_responses: true,
       submitted: false,
     },
+    ...panbs.map((e) => ({
+      id: e.form_id,
+      title: `${e.name} registration`,
+      form_kind: 'general',
+      archived_at: null,
+      fields: panbsFields,
+      event_id: e.id,
+      region_id: null,
+      is_open: true,
+      accepting_responses: true,
+      submitted: false,
+      invite_url: e.invite_url,
+    })),
   ],
   events: [
     {
@@ -217,6 +280,63 @@ export const localSupabase = {
   },
   async rpc(name, args = {}) {
     if (name === 'list_public_past_events') return ok(state.events.filter((e) => e.archive));
+    // Public PAN BS calls work signed out, as on the real site.
+    if (name === 'list_public_events')
+      return ok([
+        ...panbs.map((e) => ({
+          id: e.id,
+          name: e.name,
+          description: e.description,
+          starts_at: e.starts_at,
+          ends_at: e.ends_at,
+          event_type: 'Session',
+          location: 'Online',
+          panbs: true,
+          registers: true,
+          stage: 'upcoming',
+        })),
+        ...state.events.filter((e) => e.archive),
+      ]);
+    if (name === 'get_panbs_join_link') return ok(null);
+    if (name === 'get_panbs_form') {
+      const e = panbs.find((x) => x.id === args.p_event_id);
+      return ok(
+        e && {
+          id: e.form_id,
+          title: e.name,
+          description: e.description,
+          fields: panbsFields,
+          closes_at: null,
+          houses,
+          banner_url: null,
+          banner_alt: null,
+        }
+      );
+    }
+    if (name === 'submit_panbs_registration') {
+      const e = panbs.find((x) => x.form_id === args.p_form_id);
+      const email = String(args.p_email || '')
+        .trim()
+        .toLowerCase();
+      if (!e) return fail('form unavailable');
+      if (!/@([a-z0-9-]+\.)*study\.iitm\.ac\.in$/.test(email))
+        return {
+          data: null,
+          error: {
+            code: '22023',
+            message: 'Use your IITM student email (ending in study.iitm.ac.in)',
+          },
+        };
+      const key = `${e.form_id}:${email}`;
+      if (state.guests.includes(key))
+        return {
+          data: null,
+          error: { code: 'PT409', message: 'This email is already registered for this event' },
+        };
+      state.guests.push(key);
+      persist();
+      return ok({ registered: true, invite_url: e.invite_url });
+    }
     if (!state.signedIn) return fail('sign in first');
     let value;
     switch (name) {
@@ -282,7 +402,12 @@ export const localSupabase = {
         value = {
           response_id: `local-${form.id}`,
           registered: !!event,
-          invite_url: event ? null : 'https://example.invalid/local-whatsapp',
+          invite_url:
+            form.invite_url !== undefined
+              ? form.invite_url
+              : event
+                ? null
+                : 'https://example.invalid/local-whatsapp',
         };
         break;
       }
@@ -292,7 +417,7 @@ export const localSupabase = {
             (f) => f.id === args.p_form_id && eligible(f) && f.submitted && !f.event_id
           )
             ? 'https://example.invalid/local-whatsapp'
-            : null
+            : (state.forms.find((f) => f.id === args.p_form_id && f.submitted)?.invite_url ?? null)
         );
       case 'set_my_notice_state': {
         const notice = state.notices.find((n) => n.id === args.p_announcement_id);
