@@ -190,7 +190,9 @@ onBeforeUnmount(() => {
 onMounted(async () => {
   if (!auth.session || !auth.profile) return;
   try {
-    if (!lounge.ready) await hydrateLounge();
+    // Also refresh a cached Lounge that predates this form opening (say, arriving from Register
+    // on the Events page after visiting the Lounge earlier).
+    if (!lounge.ready || !canSubmit.value) await hydrateLounge();
     if (locked.value) await loadInvite();
   } catch (err) {
     loadError.value = errorText(err);

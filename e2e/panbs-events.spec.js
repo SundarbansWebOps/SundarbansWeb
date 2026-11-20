@@ -77,6 +77,8 @@ test('a signed-out student registers for a PANBS event on the event page', async
   await pop.getByLabel(/Phone/).fill('98765 43210');
   await pop.getByRole('button', { name: 'Count me in' }).click();
   await expect(pop.getByRole('status')).toContainText('You’re registered');
+  // This form has no WhatsApp group, so there is no invite step.
+  await expect(pop.getByRole('link', { name: /WhatsApp/ })).toHaveCount(0);
   await pop.getByRole('button', { name: 'Done' }).click();
   // Closing the pop-up keeps the sheet open, now marked registered.
   await expect(sheet.getByRole('status')).toContainText('You’re registered');
@@ -98,6 +100,32 @@ test('a signed-out student registers for a PANBS event on the event page', async
   await page.reload();
   await expect(page.getByRole('dialog').getByRole('status')).toContainText('Already registered');
   await expect(page.getByRole('dialog').getByRole('button', { name: 'Register' })).toHaveCount(0);
+});
+
+test('a guest gets the form’s WhatsApp invite as the last step', async ({ page }) => {
+  const invite = 'https://chat.whatsapp.com/AbC123';
+  await mockSupabase(page, {
+    signedIn: false,
+    data: {
+      list_public_events: [PANBS_EVENT],
+      get_panbs_join_link: null,
+      get_panbs_form: FORM,
+      submit_panbs_registration: { registered: true, invite_url: invite },
+    },
+  });
+  await page.goto(`/#/events?event=${EVENT_ID}`);
+  await page.getByRole('dialog').getByRole('button', { name: 'Register' }).click();
+  const pop = page.locator('dialog[open].pop');
+  await pop.getByLabel('Name', { exact: true }).fill('Guest One');
+  await pop.getByLabel('Student email').fill('21f1000001@ds.study.iitm.ac.in');
+  await pop.getByLabel('Your house').selectOption('Nallamala');
+  await pop.getByLabel('Level').selectOption('Degree');
+  await pop.getByRole('button', { name: 'Count me in' }).click();
+  const link = pop.getByRole('link', { name: /Open WhatsApp invite/ });
+  await expect(link).toHaveAttribute('href', invite);
+  await expect(link).toHaveAttribute('target', '_blank');
+  await pop.getByRole('button', { name: 'Done' }).click();
+  await expect(pop).toHaveCount(0);
 });
 
 test('the PANBS pop-up shows the form banner in place of the event poster', async ({ page }) => {
@@ -199,6 +227,170 @@ test('a tap on Register while the form is still loading opens it once it arrives
   await expect(page.locator('dialog[open]')).toHaveCount(0);
   release();
   await expect(page.locator('dialog[open]').getByLabel('Student email')).toBeVisible();
+});
+
+test('a tap that spans the moment Loading turns into Register still opens the form', async ({
+  page,
+}) => {
+  await mockSupabase(page, {
+    signedIn: false,
+    data: { list_public_events: [PANBS_EVENT], get_panbs_join_link: null, get_panbs_form: FORM },
+  });
+  let release;
+  const held = new Promise((r) => (release = r));
+  await page.route('**/rest/v1/rpc/get_panbs_form', async (route) => {
+    await held;
+    await route.fallback();
+  });
+  await page.goto('/#/events');
+  await page
+    .getByRole('region', { name: /Coming up/ })
+    .getByText('Paradox quiz')
+    .first()
+    .click();
+  const cta = page.getByRole('dialog', { name: 'Paradox quiz' }).locator('.panbs-cta > .cta');
+  await expect(cta).toHaveText('Loading…');
+  const box = await cta.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  release(); // the form lands mid-press
+  await expect(cta).toHaveText('Register');
+  await page.mouse.up();
+  await expect(page.locator('dialog[open]').getByLabel('Student email')).toBeVisible();
+});
+
+test('a form that fails to load offers a retry instead of saying closed', async ({ page }) => {
+  await mockSupabase(page, {
+    signedIn: false,
+    data: { list_public_events: [PANBS_EVENT], get_panbs_join_link: null, get_panbs_form: FORM },
+  });
+  let fail = true;
+  await page.route('**/rest/v1/rpc/get_panbs_form', async (route) => {
+    if (!fail) return route.fallback();
+    fail = false;
+    await route.fulfill({
+      status: 500,
+      headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' },
+      contentType: 'application/json',
+      body: JSON.stringify({ message: 'upstream timeout' }),
+    });
+  });
+  await page.goto('/#/events');
+  await page
+    .getByRole('region', { name: /Coming up/ })
+    .getByText('Paradox quiz')
+    .first()
+    .click();
+  const sheet = page.getByRole('dialog', { name: 'Paradox quiz' });
+  await expect(sheet.getByText('Registration closed')).toHaveCount(0);
+  await sheet.getByRole('button', { name: /Try again/ }).click();
+  await expect(page.locator('dialog[open]').getByLabel('Student email')).toBeVisible();
+});
+
+test('a guest answers a choice question with Other', async ({ page }) => {
+  const form = {
+    ...FORM,
+    fields: [
+      FORM.fields[0],
+      { ...FORM.fields[1], allow_other: true },
+      {
+        key: 'topics',
+        label: 'Topics',
+        type: 'multiselect',
+        options: ['Maths'],
+        allow_other: true,
+        required: true,
+      },
+    ],
+  };
+  const calls = await mockSupabase(page, {
+    signedIn: false,
+    data: { list_public_events: [PANBS_EVENT], get_panbs_join_link: null, get_panbs_form: form },
+  });
+  await page.goto('/#/events');
+  await page
+    .getByRole('region', { name: /Coming up/ })
+    .getByText('Paradox quiz')
+    .first()
+    .click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Register' }).click();
+  const pop = page.locator('dialog[open]');
+  await pop.getByLabel('Name', { exact: true }).fill('Guest One');
+  await pop.getByLabel('Student email').fill('21f1000001@ds.study.iitm.ac.in');
+  await pop.getByLabel('Your house').selectOption('Nallamala');
+  await pop.getByLabel('Level').selectOption('Other');
+  await pop.getByRole('checkbox', { name: 'Other' }).check();
+  await pop.getByRole('button', { name: 'Count me in' }).click();
+  await expect(pop.getByRole('alert')).toContainText('Type your Other answer for Level');
+  await pop.getByLabel('Other answer for Level').fill('PhD');
+  await pop.getByLabel('Other answer for Topics').fill('Poetry');
+  await pop.getByRole('button', { name: 'Count me in' }).click();
+  await expect(pop.getByRole('status')).toBeVisible();
+  const sent = JSON.parse(
+    (await callTo(calls, '/rest/v1/rpc/submit_panbs_registration', 'POST')).body
+  );
+  expect(sent.p_answers).toEqual({ level: 'Other:PhD', topics: ['Other:Poetry'] });
+});
+
+test('a signed-in member taps Register and lands on the Lounge form', async ({ page }) => {
+  // Closing the sheet pops a history entry; a lounge push made at the same moment used to lose.
+  const loungeForm = {
+    ...FORM,
+    region_id: null,
+    community_id: null,
+    event_id: EVENT_ID,
+    is_open: true,
+    accepting_responses: true,
+    submitted: false,
+  };
+  await mockSupabase(page, {
+    data: {
+      list_public_events: [PANBS_EVENT],
+      get_panbs_join_link: null,
+      get_panbs_form: FORM,
+      list_lounge_forms: [loungeForm],
+    },
+  });
+  await page.goto('/#/events');
+  await page
+    .getByRole('region', { name: /Coming up/ })
+    .getByText('Paradox quiz')
+    .first()
+    .click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Register' }).click();
+  await expect(page).toHaveURL(new RegExp(`#/lounge/forms/${FORM_ID}`));
+  await expect(page.getByRole('button', { name: 'Send' })).toBeVisible();
+  await page.waitForTimeout(500); // a late back navigation would land here
+  await expect(page).toHaveURL(new RegExp(`#/lounge/forms/${FORM_ID}`));
+});
+
+test('stepping from a shared event link and registering stays on the site', async ({ page }) => {
+  // Opened from a shared link, the sheet has no entry of ours beneath it; stepping must not
+  // mark one, or closing goes Back past the site.
+  const other = {
+    ...PANBS_EVENT,
+    id: 'e7000000-0000-4000-8000-000000000002',
+    name: 'Second quiz',
+    panbs: false,
+    starts_at: soon(7),
+    ends_at: soon(8),
+  };
+  await mockSupabase(page, {
+    data: {
+      list_public_events: [PANBS_EVENT, other],
+      get_panbs_join_link: null,
+      get_panbs_form: FORM,
+    },
+  });
+  await page.goto(`/#/events?event=${other.id}`);
+  const sheet = page.getByRole('dialog', { name: 'Second quiz' });
+  await expect(sheet).toBeVisible();
+  await page.keyboard.press('ArrowLeft');
+  await page
+    .getByRole('dialog', { name: 'Paradox quiz' })
+    .getByRole('button', { name: 'Register' })
+    .click();
+  await expect(page).toHaveURL(new RegExp(`#/lounge/forms/${FORM_ID}`));
 });
 
 test('registering twice says already registered', async ({ page }) => {
