@@ -1119,7 +1119,7 @@
 
 :where(html.lounge-active)
   .evd-form
-  label:not(.evd-opt):not(.evd-check),
+  label:not(.evd-opt):not(.evd-check):not(.ff-check):not(.ff-other),
 :where(html.lounge-active) .evd-form legend {
   display: grid;
   gap: 6px;
@@ -1279,7 +1279,8 @@
 }
 
 :where(html.lounge-active) .evd-opt input,
-:where(html.lounge-active) .evd-check input {
+:where(html.lounge-active) .evd-check input,
+:where(html.lounge-active) .ff-check input {
   width: 18px;
   height: 18px;
   margin: 0;
