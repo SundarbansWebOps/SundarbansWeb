@@ -270,7 +270,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { closeEvent, fullDate, img } from '../../lib/events.js';
+import { closeEvent, fullDate, img, panbsRegistered, rememberPanbs } from '../../lib/events.js';
 import { POSTER_ART } from '../../lib/art.js';
 import { signedIn, signInWithGoogle } from '../../lib/auth.js';
 import {
@@ -290,25 +290,6 @@ const FIXED = new Set(['name', 'email', 'phone']);
 // Organizers can reword the fixed fields in the form builder (PANBS_DEFAULTS in admin.js); older
 // forms without those rows keep these words.
 const FIXED_LABEL = { name: 'Name', email: 'Student email', house: 'Your house', phone: 'Phone' };
-
-// This browser remembers which PANBS events it registered for, so a refresh still says
-// "Already registered" (no account to look it up by). The server's one-per-email rule stays the
-// authority; storage can be blocked or cleared, so every access is guarded.
-const SAVED = 'sundarbans-panbs-registered';
-function savedIds() {
-  try {
-    return JSON.parse(localStorage.getItem(SAVED)) || [];
-  } catch {
-    return [];
-  }
-}
-function remember(id) {
-  try {
-    localStorage.setItem(SAVED, JSON.stringify([...new Set([...savedIds(), id])]));
-  } catch {
-    /* private window or storage off: the server still blocks a second registration */
-  }
-}
 
 const state = ref('loading'); // loading | join | ready | sending | done | closed | error
 const dlg = ref(null);
@@ -407,7 +388,7 @@ async function load() {
   try {
     // Both calls start together; the server releases the link only inside the join window,
     // so it decides Join vs Register. The device's guest record only applies to guests.
-    const saved = !signedIn.value && savedIds().includes(id);
+    const saved = !signedIn.value && panbsRegistered.includes(id);
     const linkCall = getPanbsJoinLink(id).catch(() => null);
     const formCall = props.e.registers && !saved ? getPanbsForm(id) : Promise.resolve(null);
     formCall.catch(() => {}); // a failure is handled below, only if the form is needed
@@ -535,12 +516,12 @@ async function send() {
       phone: who.phone ? phoneOut(who.phone) : null,
       answers: Object.fromEntries(asked.value.map((f) => [f.key, answerOut(f)])),
     });
-    remember(props.e.dbId);
+    rememberPanbs(props.e.dbId);
     sent.value = true;
     state.value = 'done';
   } catch (err) {
     if (err?.code === 'PT409') {
-      remember(props.e.dbId);
+      rememberPanbs(props.e.dbId);
       result.value = null;
       sent.value = true;
       state.value = 'done';

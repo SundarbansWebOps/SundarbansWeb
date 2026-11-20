@@ -19,6 +19,7 @@
   >
     <div ref="scrollEl" class="scroll" @animationend.self="unrolled">
       <div class="rod" aria-hidden="true" />
+      <NextEventTag :ready="settled" :still="RM" />
 
       <div class="paper">
         <!-- ============ Title panel ============ -->
@@ -291,25 +292,45 @@
         <span class="cue">Scroll to unroll</span>
       </div>
     </div>
+    <EventSheet :list="sheetList" />
   </main>
 </template>
 
 <script setup>
 import CREST from '../assets/crest.webp';
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { takeLaunchCut } from '../lib/launch.js';
+import EventSheet from '../components/site/EventSheet.vue';
 import LineIcon from '../components/site/LineIcon.vue';
+import NextEventTag from '../components/site/NextEventTag.vue';
 import PatFigure from '../components/site/PatFigure.vue';
 import PatPosters from '../components/site/PatPosters.vue';
 import PatSearch from '../components/site/PatSearch.vue';
 import { ASSET, FIGS, FOREST } from '../lib/pat.js';
 import { nav } from '../lib/store.js';
 import { courses, WHATSAPP } from '../lib/courses.js';
-import { events, WINGS } from '../lib/events.js';
+import {
+  byId,
+  events,
+  ev,
+  live as liveEvents,
+  loadPublicEvents,
+  publicCatalog,
+  upcoming as upcomingEvents,
+  WINGS,
+} from '../lib/events.js';
 import { meetupCount, photoCount, portrait, regions, upper, lower } from '../lib/house.js';
 import { COMMUNITIES, TEAMS } from '../data/teams.js';
 
 const forestSet = `${ASSET.forest800} 800w, ${ASSET.forest} 1400w`;
+
+// The event sheet opened from the next-event tag pages through what is on air and coming up.
+// A deep link to any other event still opens, alone.
+const happening = computed(() => [...liveEvents, ...upcomingEvents]);
+const sheetList = computed(() => {
+  if (happening.value.some((e) => e.id === ev.open)) return happening.value;
+  return byId[ev.open] ? [byId[ev.open]] : [];
+});
 
 // ---- Numbers, all from the data ------------------------------------------------------------
 const sum = (f) => courses.reduce((n, c) => n + f(c), 0);
@@ -634,6 +655,7 @@ function onMotionChange(e) {
 }
 
 onMounted(() => {
+  if (!publicCatalog.ready) loadPublicEvents();
   if (!composed) {
     for (const t of INTRO_EVENTS)
       addEventListener(t, fastForward, { capture: true, passive: true });

@@ -249,6 +249,29 @@ export function matches(e, q) {
 
 // ---- Event sheet state; ?event= deep link, phone back closes it. -------------------------
 // `wing`: a filter to open the Events page with (set by a Teams community card).
+// PANBS events this browser registered a guest for, so a refresh still says "Already registered"
+// and the Home tag stops inviting (no account to look it up by). The server's one-per-email rule
+// stays the authority; storage can be blocked or cleared, so every access is guarded.
+const PANBS_SAVED = 'sundarbans-panbs-registered';
+export const panbsRegistered = reactive(
+  (() => {
+    try {
+      const ids = JSON.parse(localStorage.getItem(PANBS_SAVED));
+      return Array.isArray(ids) ? ids : [];
+    } catch {
+      return [];
+    }
+  })()
+);
+export function rememberPanbs(id) {
+  if (!panbsRegistered.includes(id)) panbsRegistered.push(id);
+  try {
+    localStorage.setItem(PANBS_SAVED, JSON.stringify(panbsRegistered));
+  } catch {
+    /* private window or storage off: the server still blocks a second registration */
+  }
+}
+
 export const ev = reactive({ open: null, origin: null, hover: null, wing: null });
 
 export function openEvent(id, e) {
