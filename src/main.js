@@ -5,5 +5,6 @@ import { router } from './router/index.js';
 import './lib/theme.js';
 import App from './App.vue';
 import './assets/tokens.css';
+import './assets/scrollbars.css';
 
 createApp(App).use(router).mount('#app');
