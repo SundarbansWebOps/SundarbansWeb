@@ -48,11 +48,13 @@
       {{ result?.registered ? 'You’re registered' : 'Already registered' }}
     </div>
 
-    <RouterLink
+    <!-- Not a RouterLink: closing the sheet pops a history entry, and a push made at the same
+         time loses to it. The page change waits for the close (closeEvent's callback). -->
+    <a
       v-else-if="signedIn"
       class="cta"
-      :to="`/lounge/forms/${form.id}`"
-      @click="closeEvent()"
+      :href="router.resolve(loungeForm).href"
+      @click.prevent="toForm"
       ><svg class="bloom" viewBox="-12 -12 24 24" aria-hidden="true">
         <ellipse
           v-for="a in 8"
@@ -63,7 +65,7 @@
           :transform="`rotate(${a * 45})`"
         />
         <circle class="core" r="2.4" /></svg
-      ><span>Register</span></RouterLink
+      ><span>Register</span></a
     >
     <button v-else type="button" class="cta" @click="open">
       <svg class="bloom" viewBox="-12 -12 24 24" aria-hidden="true">
@@ -251,6 +253,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { closeEvent, fullDate, img } from '../../lib/events.js';
 import { POSTER_ART } from '../../lib/art.js';
 import { signedIn, signInWithGoogle } from '../../lib/auth.js';
@@ -262,6 +265,7 @@ import {
 } from '../../lib/lounge.js';
 
 const props = defineProps({ e: { type: Object, required: true } });
+const router = useRouter();
 
 // Mirrors the server rule in submit_panbs_registration; the server stays the authority.
 const STUDENT_EMAIL = /^[a-z0-9._%+-]+@([a-z0-9-]+\.)*study\.iitm\.ac\.in$/i;
@@ -397,7 +401,8 @@ watch(
       state.value = f ? 'ready' : 'closed';
       if (f && wantOpen.value) {
         wantOpen.value = false;
-        if (!signedIn.value) open();
+        if (signedIn.value) toForm();
+        else open();
       }
     } catch {
       if (mine === run) state.value = 'closed';
@@ -405,6 +410,12 @@ watch(
   },
   { immediate: true }
 );
+
+const loungeForm = computed(() => `/lounge/forms/${form.value?.id}`);
+function toForm() {
+  const to = loungeForm.value;
+  closeEvent(() => router.push(to));
+}
 
 async function open() {
   if (!dlg.value || dlg.value.open) return;

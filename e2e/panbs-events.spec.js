@@ -201,6 +201,23 @@ test('a tap on Register while the form is still loading opens it once it arrives
   await expect(page.locator('dialog[open]').getByLabel('Student email')).toBeVisible();
 });
 
+test('a signed-in member taps Register and lands on the Lounge form', async ({ page }) => {
+  // Closing the sheet pops a history entry; a lounge push made at the same moment used to lose.
+  await mockSupabase(page, {
+    data: { list_public_events: [PANBS_EVENT], get_panbs_join_link: null, get_panbs_form: FORM },
+  });
+  await page.goto('/#/events');
+  await page
+    .getByRole('region', { name: /Coming up/ })
+    .getByText('Paradox quiz')
+    .first()
+    .click();
+  await page.getByRole('dialog').getByRole('link', { name: 'Register' }).click();
+  await expect(page).toHaveURL(new RegExp(`#/lounge/forms/${FORM_ID}`));
+  await page.waitForTimeout(500); // a late back navigation would land here
+  await expect(page).toHaveURL(new RegExp(`#/lounge/forms/${FORM_ID}`));
+});
+
 test('registering twice says already registered', async ({ page }) => {
   await mockSupabase(page, {
     signedIn: false,
