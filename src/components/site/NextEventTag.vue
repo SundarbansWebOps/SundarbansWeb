@@ -18,7 +18,7 @@
 
 <script setup>
 import { computed } from 'vue';
-import { fullDate, live, openEvent, upcoming } from '../../lib/events.js';
+import { fullDate, live, openEvent, panbsRegistered, upcoming } from '../../lib/events.js';
 
 defineProps({
   // The title panel has finished unrolling; the tag drops in once then.
@@ -27,11 +27,17 @@ defineProps({
   still: { type: Boolean, default: false },
 });
 
-// PAN BS sessions only (guests can register from the sheet): one on air first, then the soonest.
-const next = computed(() => [...live, ...upcoming].find((e) => e.panbs) ?? null);
+// PAN BS sessions only: one on air first, then the soonest. An upcoming session this browser
+// already registered for is skipped; a live one stays, since its tag is the way in to join.
+const next = computed(
+  () =>
+    [...live, ...upcoming].find(
+      (e) => e.panbs && (e.stage === 'live' || !panbsRegistered.includes(e.dbId))
+    ) ?? null
+);
 
 const kicker = computed(() =>
-  next.value?.stage === 'live' ? 'Live now · Join' : 'Registrations open'
+  next.value?.stage === 'live' ? 'Live now · Join' : 'Upcoming session'
 );
 
 // The event sheet's own date and time format (times are IST, from the event's start).
@@ -169,13 +175,16 @@ const label = computed(() =>
   font-variant-numeric: tabular-nums;
 }
 
-/* On a phone the title block fills the top: the tag hangs lower, beside the mangroves, on a long
-   string tied near its right corner, clear of the crest, heading and pill. */
+/* On a phone the title block fills the top, so the tag hangs lower, from a mangrove branch on a
+   short string, clear of the crest, heading and pill. */
 @media (max-width: 560px) {
   .tag-wrap {
-    --string: 360px;
-    --hang: calc(100% - 22px);
+    --string: 14px;
+    top: calc(var(--rod-h) + 346px);
     width: clamp(160px, 46vw, 178px);
+  }
+  .name {
+    -webkit-line-clamp: 3;
   }
   .kicker {
     letter-spacing: 0.08em;
