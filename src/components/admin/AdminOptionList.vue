@@ -91,9 +91,9 @@ function onBackspace(i, e) {
 }
 legend {
   padding: 0;
-  margin-bottom: 6px;
+  margin-bottom: 5px;
   font-size: 13px;
-  color: var(--ink-2);
+  font-weight: 600;
 }
 ol {
   list-style: none;
@@ -130,7 +130,7 @@ ol {
 small {
   display: block;
   margin-top: 6px;
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--ink-3);
 }
 small.bad {
