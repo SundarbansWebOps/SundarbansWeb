@@ -21,7 +21,7 @@
     </svg>
 
     <button type="button" class="art" :aria-label="`Poster: ${next.title}`" @click="open">
-      <img v-if="poster" :src="poster" alt="" decoding="async" />
+      <img v-if="poster && !previewCrest" :src="poster" alt="" decoding="async" />
       <img v-else class="crest" :src="CREST" alt="" decoding="async" />
     </button>
 
@@ -57,6 +57,8 @@ defineProps({
   still: { type: Boolean, default: false },
 });
 
+// Prototype only: ?v=b&crest previews the no-poster fallback on an event that has one.
+const previewCrest = new URLSearchParams(location.search).has('crest');
 const open = (ev) => openEvent(next.value.id, ev);
 </script>
 
