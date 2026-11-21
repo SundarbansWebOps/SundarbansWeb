@@ -1,8 +1,9 @@
 <!--
-  Prototype B — "Invitation". A painted invitation set into the title panel, under the motto, where
-  every visitor reads. Poster on the left, headline, guest and one-line teaser in the middle, a date
-  leaf and the Register / Details actions on the right. Lotus corners are drawn in SVG to match the
-  scroll's borders. It is brushed in once after the title settles.
+  Prototype B — "Invitation". A slim painted invitation set into the title panel under the motto,
+  where every visitor reads, kept to one row so the boat and tiger below stay clear. The poster
+  (tilted, overhanging the card) shows the guest's face; status, countdown, headline and guest sit
+  beside it, then the date and Register. Lotus corners are drawn in SVG to match the scroll's
+  borders. It unfurls once after the title settles.
 -->
 <template>
   <div v-if="next" class="invite" :class="{ show: ready, drop: ready && !still, still }">
@@ -25,45 +26,29 @@
 
     <div class="copy">
       <p class="kicker mono">
-        <i aria-hidden="true" />{{ kicker
-        }}<span v-if="countdown" class="cd">· {{ countdown }}</span>
+        <i aria-hidden="true" /><span>{{ kicker }}</span
+        ><span v-if="countdown" class="cd">· {{ countdown }}</span>
       </p>
-      <p v-if="parts.series" class="series">{{ parts.series }} presents</p>
-      <p class="name">
+      <p class="name" :title="next.title">
         {{ parts.headline }}<span v-if="parts.guest" class="guest"> with {{ parts.guest }}</span>
       </p>
-      <p v-if="teaser" class="teaser">{{ teaser }}</p>
     </div>
 
-    <div class="side">
-      <div v-if="dateParts" class="leaf" :aria-label="when">
-        <span class="mon mono">{{ dateParts.month }}</span>
-        <span class="day">{{ dateParts.day }}</span>
-        <span class="time mono">{{ dateParts.weekday }} · {{ next.time }}</span>
-      </div>
-      <div class="acts">
-        <button type="button" class="go" @click="open">
-          {{ cta }}
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-        </button>
-      </div>
-    </div>
+    <p v-if="dateParts" class="date" :aria-label="when">
+      <span class="d">{{ dateParts.weekday }} {{ dateParts.day }} {{ dateParts.month }}</span>
+      <span class="t mono">{{ next.time }} IST</span>
+    </p>
+
+    <button type="button" class="go" @click="open">
+      {{ cta }}
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+    </button>
   </div>
 </template>
 
 <script setup>
 import { openEvent } from '../../../lib/events.js';
-import {
-  countdown,
-  cta,
-  dateParts,
-  kicker,
-  next,
-  parts,
-  poster,
-  teaser,
-  when,
-} from './next-event.js';
+import { countdown, cta, dateParts, kicker, next, parts, poster, when } from './next-event.js';
 
 defineProps({
   ready: { type: Boolean, default: false },
@@ -78,12 +63,12 @@ const open = (ev) => openEvent(next.value.id, ev);
   position: relative;
   z-index: 3;
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr) auto;
+  grid-template-columns: 58px minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 18px;
-  width: min(660px, 100%);
-  margin-top: 14px;
-  padding: 14px 16px 14px 14px;
+  gap: 16px;
+  width: min(620px, 100%);
+  margin-top: 16px;
+  padding: 10px 14px 10px 16px;
   border: 1.5px solid var(--pi);
   border-radius: 12px;
   background: var(--pcard);
@@ -115,20 +100,19 @@ const open = (ev) => openEvent(next.value.id, ev);
 @keyframes unfurl {
   from {
     opacity: 0;
-    transform: translateY(10px) scaleY(0.9);
     clip-path: inset(0 50% 0 50%);
   }
   to {
     opacity: 1;
-    clip-path: inset(-12px -12px -12px -12px);
+    clip-path: inset(-40px -40px -40px -40px);
   }
 }
 
 /* Lotus corners, mirrored per corner. */
 .corner {
   position: absolute;
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   pointer-events: none;
 }
 .corner .petal {
@@ -159,19 +143,28 @@ const open = (ev) => openEvent(next.value.id, ev);
   transform: scale(-1);
 }
 
+/* The poster overhangs the slim card, tilted like a pinned print; on hover it straightens and
+   lifts. Only the picture moves. */
 .art {
   position: relative;
+  z-index: 1;
   aspect-ratio: 4 / 5;
+  margin-block: -22px;
   padding: 0;
   border: 1.5px solid var(--pi);
-  border-radius: 6px;
+  border-radius: 5px;
   overflow: hidden;
   background: var(--pp);
   cursor: pointer;
+  transform: rotate(-2.5deg);
   box-shadow: 3px 3px 0 var(--pmari);
-  transition: box-shadow 0.25s var(--ease-out);
+  transition:
+    transform 0.35s var(--ease-spring),
+    box-shadow 0.35s var(--ease-out);
 }
-.art:hover {
+.art:hover,
+.art:focus-visible {
+  transform: rotate(0deg) scale(1.08);
   box-shadow: 4px 4px 0 var(--pv);
 }
 .art img {
@@ -183,20 +176,22 @@ const open = (ev) => openEvent(next.value.id, ev);
 
 .copy {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
 }
-.copy p:not(.teaser) {
+.copy p {
   margin: 0;
 }
 .kicker {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  column-gap: 6px;
   font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
+  white-space: nowrap;
   color: var(--pv);
 }
 .kicker i {
@@ -209,63 +204,41 @@ const open = (ev) => openEvent(next.value.id, ev);
 .cd {
   color: var(--pi2);
 }
-.series {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--pi2);
-}
 .name {
-  margin: 0;
-  font-size: clamp(19px, 1.7vw, 23px);
+  overflow: hidden;
+  font-size: clamp(17px, 1.45vw, 20px);
   font-weight: 750;
-  line-height: 1.08;
-  letter-spacing: -0.025em;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .guest {
   color: var(--pv);
 }
-.teaser {
-  margin: 3px 0 0;
-  font-size: 13px;
-  line-height: 1.4;
-  color: var(--pi2);
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
 
-.side {
+.date {
   display: grid;
-  justify-items: center;
-  gap: 10px;
+  justify-items: end;
+  gap: 2px;
+  margin: 0;
   padding-left: 16px;
   border-left: 1.5px dashed var(--pi2);
-}
-.leaf {
-  display: grid;
-  justify-items: center;
-  line-height: 1;
-}
-.mon {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--pv);
-}
-.day {
-  font-size: 38px;
-  font-weight: 800;
-  letter-spacing: -0.04em;
-  font-variant-numeric: tabular-nums;
-}
-.time {
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--pi2);
+  line-height: 1.1;
   white-space: nowrap;
 }
+.d {
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+.t {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pi2);
+  font-variant-numeric: tabular-nums;
+}
+
 .go {
   display: inline-flex;
   align-items: center;
@@ -278,6 +251,7 @@ const open = (ev) => openEvent(next.value.id, ev);
   font: inherit;
   font-size: 13.5px;
   font-weight: 750;
+  white-space: nowrap;
   cursor: pointer;
   box-shadow: 0 2px 0 var(--pi);
   transition:
@@ -298,43 +272,41 @@ const open = (ev) => openEvent(next.value.id, ev);
   stroke-linejoin: round;
 }
 
-/* Phone: poster and copy side by side, date and action in a strip below. */
-@media (max-width: 560px) {
+/* Narrow: poster and copy on top, date and action in a strip below. */
+@media (max-width: 640px) {
   .invite {
-    grid-template-columns: 76px minmax(0, 1fr);
-    gap: 12px;
+    grid-template-columns: 58px minmax(0, 1fr) auto;
+    row-gap: 10px;
+    column-gap: 12px;
     width: 100%;
     padding: 12px;
   }
-  .teaser {
-    display: none;
+  .art {
+    grid-row: span 2;
+    align-self: start;
+    margin-block: -18px 0;
   }
-  .kicker {
-    flex-wrap: wrap;
-    column-gap: 6px;
-    row-gap: 2px;
-    letter-spacing: 0.08em;
-    white-space: nowrap;
+  .copy {
+    grid-column: 2 / -1;
   }
   .name {
-    font-size: 18px;
+    white-space: normal;
   }
-  .side {
-    grid-column: 1 / -1;
+  .kicker {
+    letter-spacing: 0.08em;
+  }
+  .date {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 8px;
+    min-width: 0;
     padding: 10px 0 0;
     border-left: 0;
     border-top: 1.5px dashed var(--pi2);
   }
-  .leaf {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-  }
-  .day {
-    font-size: 24px;
+  .go {
+    align-self: end;
   }
 }
 </style>
