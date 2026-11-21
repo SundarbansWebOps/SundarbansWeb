@@ -275,16 +275,17 @@ const open = (ev) => openEvent(next.value.id, ev);
 /* Narrow: poster and copy on top, date and action in a strip below. */
 @media (max-width: 640px) {
   .invite {
-    grid-template-columns: 58px minmax(0, 1fr) auto;
+    grid-template-columns: 64px minmax(0, 1fr) auto;
     row-gap: 10px;
     column-gap: 12px;
     width: 100%;
     padding: 12px;
   }
+  /* Spans both rows and sits centred, overhanging top and bottom equally as on desktop. */
   .art {
     grid-row: span 2;
-    align-self: start;
-    margin-block: -18px 0;
+    align-self: center;
+    margin-block: -14px;
   }
   .copy {
     grid-column: 2 / -1;
