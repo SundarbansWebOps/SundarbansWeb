@@ -5,7 +5,7 @@
   scroll's borders. It is brushed in once after the title settles.
 -->
 <template>
-  <div v-if="next" class="invite" :class="{ show: ready, drop: ready && !still }">
+  <div v-if="next" class="invite" :class="{ show: ready, drop: ready && !still, still }">
     <svg
       v-for="c in ['tl', 'tr', 'bl', 'br']"
       :key="c"
@@ -95,13 +95,22 @@ const open = (ev) => openEvent(next.value.id, ev);
   text-align: left;
   opacity: 0;
   visibility: hidden;
+  /* The title block drifts with the pointer (HomePage .title). The card sits inside it, so it
+     moves the exact opposite way on the same timing and stays put; text drifting across
+     sub-pixels read as a blur. */
+  transform: translate(calc(var(--mx) * 3px), calc(var(--my) * 2px));
+  transition: transform 0.8s var(--ease-out);
+}
+.invite.still {
+  transform: none;
+  transition: none;
 }
 .invite.show {
   opacity: 1;
   visibility: visible;
 }
 .invite.drop {
-  animation: unfurl 0.7s var(--ease-out) both;
+  animation: unfurl 0.7s var(--ease-out) backwards;
 }
 @keyframes unfurl {
   from {
@@ -111,7 +120,6 @@ const open = (ev) => openEvent(next.value.id, ev);
   }
   to {
     opacity: 1;
-    transform: none;
     clip-path: inset(-12px -12px -12px -12px);
   }
 }
@@ -160,12 +168,11 @@ const open = (ev) => openEvent(next.value.id, ev);
   overflow: hidden;
   background: var(--pp);
   cursor: pointer;
-  transform: rotate(-2.5deg);
   box-shadow: 3px 3px 0 var(--pmari);
-  transition: transform 0.35s var(--ease-spring);
+  transition: box-shadow 0.25s var(--ease-out);
 }
 .art:hover {
-  transform: rotate(0deg) scale(1.04);
+  box-shadow: 4px 4px 0 var(--pv);
 }
 .art img {
   width: 100%;
