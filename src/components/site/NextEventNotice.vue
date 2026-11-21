@@ -1,5 +1,5 @@
 <!--
-  The Home page's notice for the next PAN BS session: a slim painted invitation set into the title
+  The Home page's notice for the next public event (a PAN BS session or a House event): a slim painted invitation set into the title
   panel under the motto, kept to one row so the boat and tiger below stay clear. The event poster
   (tilted, overhanging the card; the house crest when there is none) shows the guest; status,
   countdown, headline and guest sit beside it, then the date and Register. Lotus corners are drawn
@@ -57,26 +57,39 @@ defineProps({
   still: { type: Boolean, default: false },
 });
 
-// PAN BS sessions only: one on air first, then the soonest. An upcoming session this browser
-// already registered for is skipped; a live one stays, since its notice is the way in to join.
-const next = computed(
-  () =>
-    [...live, ...upcoming].find(
-      (e) => e.panbs && (e.stage === 'live' || !panbsRegistered.includes(e.dbId))
-    ) ?? null
-);
+// One card, one event: anything on air first, then a PAN BS session taking registrations, then
+// the soonest public event of either kind. A PAN BS session this browser already registered for
+// is skipped unless it is live, since then the card is the way in to join. House events have no
+// per-browser record (they register in the Lounge or on an outside form), so theirs stays until
+// the event starts.
+const next = computed(() => {
+  const open = [...live, ...upcoming].filter(
+    (e) => e.stage === 'live' || !(e.panbs && panbsRegistered.includes(e.dbId))
+  );
+  return (
+    open.find((e) => e.stage === 'live') ??
+    open.find((e) => e.panbs && e.registers) ??
+    open[0] ??
+    null
+  );
+});
 
 const isLive = computed(() => next.value?.stage === 'live');
 
-// An open form takes registrations; a PAN BS session without one is only announced.
+// PAN BS: an open form takes registrations; without one the session is only announced.
+// House events: a sign-up link means Register, otherwise the sheet has the details.
 const kicker = computed(() => {
+  const e = next.value;
   if (isLive.value) return 'Live now';
-  return next.value?.registers ? 'Registrations open' : 'Upcoming session';
+  if (!e?.panbs) return 'House event';
+  return e.registers ? 'Registrations open' : 'Upcoming session';
 });
 
 const cta = computed(() => {
+  const e = next.value;
   if (isLive.value) return 'Join now';
-  return next.value?.registers ? 'Register' : 'See details';
+  if (e?.panbs ? e.registers : e?.link) return 'Register';
+  return 'See details';
 });
 
 const when = computed(() => {
