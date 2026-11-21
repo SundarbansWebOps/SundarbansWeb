@@ -1,12 +1,12 @@
 <!--
-  Prototype B — "Invitation". A slim painted invitation set into the title panel under the motto,
-  where every visitor reads, kept to one row so the boat and tiger below stay clear. The poster
-  (tilted, overhanging the card) shows the guest's face; status, countdown, headline and guest sit
-  beside it, then the date and Register. Lotus corners are drawn in SVG to match the scroll's
-  borders. It unfurls once after the title settles.
+  The Home page's notice for the next PAN BS session: a slim painted invitation set into the title
+  panel under the motto, kept to one row so the boat and tiger below stay clear. The event poster
+  (tilted, overhanging the card; the house crest when there is none) shows the guest; status,
+  countdown, headline and guest sit beside it, then the date and Register. Lotus corners are drawn
+  in SVG to match the scroll's borders. It unfurls once after the title settles.
 -->
 <template>
-  <div v-if="next" class="invite" :class="{ show: ready, drop: ready && !still, still }">
+  <div v-if="next" class="invite" :class="{ show: ready, drop: ready && !still }">
     <svg
       v-for="c in ['tl', 'tr', 'bl', 'br']"
       :key="c"
@@ -21,7 +21,7 @@
     </svg>
 
     <button type="button" class="art" :aria-label="`Poster: ${next.title}`" @click="open">
-      <img v-if="poster && !previewCrest" :src="poster" alt="" decoding="async" />
+      <img v-if="poster" :src="poster" alt="" decoding="async" />
       <img v-else class="crest" :src="CREST" alt="" decoding="async" />
     </button>
 
@@ -48,17 +48,84 @@
 </template>
 
 <script setup>
-import CREST from '../../../assets/crest.webp';
-import { openEvent } from '../../../lib/events.js';
-import { countdown, cta, dateParts, kicker, next, parts, poster, when } from './next-event.js';
+import { computed } from 'vue';
+import CREST from '../../assets/crest.webp';
+import { fullDate, img, live, openEvent, panbsRegistered, upcoming } from '../../lib/events.js';
 
 defineProps({
   ready: { type: Boolean, default: false },
   still: { type: Boolean, default: false },
 });
 
-// Prototype only: ?v=b&crest previews the no-poster fallback on an event that has one.
-const previewCrest = new URLSearchParams(location.search).has('crest');
+// PAN BS sessions only: one on air first, then the soonest. An upcoming session this browser
+// already registered for is skipped; a live one stays, since its notice is the way in to join.
+const next = computed(
+  () =>
+    [...live, ...upcoming].find(
+      (e) => e.panbs && (e.stage === 'live' || !panbsRegistered.includes(e.dbId))
+    ) ?? null
+);
+
+const isLive = computed(() => next.value?.stage === 'live');
+
+// An open form takes registrations; a PAN BS session without one is only announced.
+const kicker = computed(() => {
+  if (isLive.value) return 'Live now';
+  return next.value?.registers ? 'Registrations open' : 'Upcoming session';
+});
+
+const cta = computed(() => {
+  if (isLive.value) return 'Join now';
+  return next.value?.registers ? 'Register' : 'See details';
+});
+
+const when = computed(() => {
+  const e = next.value;
+  if (!e?.at) return '';
+  return [fullDate(e), e.time].filter(Boolean).join(' · ');
+});
+
+// Date pieces in IST, e.g. { day: '23', month: 'Nov', weekday: 'Mon' }.
+const dateParts = computed(() => {
+  const at = next.value?.at;
+  if (!at) return null;
+  const f = (o) => new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', ...o }).format(at);
+  return {
+    day: f({ day: 'numeric' }),
+    month: f({ month: 'short' }),
+    weekday: f({ weekday: 'short' }),
+  };
+});
+
+// Whole IST days until the start: 0 today, 1 tomorrow.
+const daysLeft = computed(() => {
+  const at = next.value?.at;
+  if (!at || isLive.value) return null;
+  const ist = (d) => new Date(d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }));
+  const n = Math.round((ist(at) - ist(new Date())) / 864e5);
+  return n >= 0 ? n : null;
+});
+
+const countdown = computed(() => {
+  const n = daysLeft.value;
+  if (isLive.value) return 'On air now';
+  if (n == null) return '';
+  if (n === 0) return 'Today';
+  if (n === 1) return 'Tomorrow';
+  return `In ${n} days`;
+});
+
+// Series titles read "<series> presents <headline> with <guest>"; the card leads with the
+// headline and highlights the guest. Titles without that shape show whole.
+const parts = computed(() => {
+  const t = next.value?.title ?? '';
+  const rest = t.match(/^.*?\s+presents\s+(.*)$/i)?.[1] ?? t;
+  const g = rest.match(/^(.*?)\s+with\s+(.*)$/i);
+  return { headline: g ? g[1] : rest, guest: g ? g[2] : '' };
+});
+
+const poster = computed(() => img.card(next.value?.image) ?? null);
+
 const open = (ev) => openEvent(next.value.id, ev);
 </script>
 
@@ -84,15 +151,9 @@ const open = (ev) => openEvent(next.value.id, ev);
   text-align: left;
   opacity: 0;
   visibility: hidden;
-  /* The title block drifts with the pointer (HomePage .title). The card sits inside it, so it
-     moves the exact opposite way on the same timing and stays put; text drifting across
-     sub-pixels read as a blur. */
-  transform: translate(calc(var(--mx) * 3px), calc(var(--my) * 2px));
-  transition: transform 0.8s var(--ease-out);
-}
-.invite.still {
-  transform: none;
-  transition: none;
+  /* No transform here or on any ancestor: the card is its own compositor layer (it overlaps the
+     animated hero art), and moving that layer by fractional pixels resamples its text soft.
+     HomePage keeps it outside the pointer-drifting lettering for that reason. */
 }
 .invite.show {
   opacity: 1;
@@ -169,7 +230,6 @@ const open = (ev) => openEvent(next.value.id, ev);
 .art:hover,
 .art:focus-visible {
   transform: rotate(0deg) scale(1.08);
-  box-shadow: 4px 4px 0 var(--pv);
 }
 .art img {
   width: 100%;

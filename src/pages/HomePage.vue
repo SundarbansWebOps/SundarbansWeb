@@ -19,9 +19,6 @@
   >
     <div ref="scrollEl" class="scroll" @animationend.self="unrolled">
       <div class="rod" aria-hidden="true" />
-      <NextEventTag v-if="notice === 'now'" :ready="settled" :still="RM" />
-      <NoticePosterTag v-else-if="notice === 'a'" :ready="settled" :still="RM" />
-      <NoticeGarland v-else-if="notice === 'c'" :ready="settled" :still="RM" />
 
       <div class="paper">
         <!-- ============ Title panel ============ -->
@@ -68,30 +65,35 @@
           </div>
 
           <div class="title">
-            <span class="seal" aria-hidden="true">
-              <svg viewBox="0 0 100 100">
-                <circle class="ring" cx="50" cy="50" r="46" />
-                <circle class="dots" cx="50" cy="50" r="40.5" />
-              </svg>
-              <img :src="CREST" alt="" width="64" height="64" />
-            </span>
-            <h1 id="pat-title">
-              <span class="w w1">Sundarbans</span>
-              <span class="w w2">House</span>
-            </h1>
-            <p class="cartouche">
-              <svg viewBox="0 0 300 46" preserveAspectRatio="none" aria-hidden="true">
-                <path class="fill" d="M24 3 H276 A20 20 0 0 1 276 43 H24 A20 20 0 0 1 24 3 Z" />
-                <path
-                  class="rule"
-                  pathLength="1"
-                  d="M24 3 H276 A20 20 0 0 1 276 43 H24 A20 20 0 0 1 24 3 Z"
-                />
-              </svg>
-              <span>IIT Madras BS <i aria-hidden="true" /> since 2021</span>
-            </p>
-            <p class="line">एकत्र उदयामः, सहैव प्रज्वलामः।</p>
-            <NoticeInvite v-if="notice === 'b'" :ready="settled" :still="RM" />
+            <!-- Only the lettering drifts with the pointer. The notice stays out of the moving layer:
+                 a composited card re-placed at fractional device pixels on every move is resampled
+                 soft (seen at 125% display scale). -->
+            <div class="drift">
+              <span class="seal" aria-hidden="true">
+                <svg viewBox="0 0 100 100">
+                  <circle class="ring" cx="50" cy="50" r="46" />
+                  <circle class="dots" cx="50" cy="50" r="40.5" />
+                </svg>
+                <img :src="CREST" alt="" width="64" height="64" />
+              </span>
+              <h1 id="pat-title">
+                <span class="w w1">Sundarbans</span>
+                <span class="w w2">House</span>
+              </h1>
+              <p class="cartouche">
+                <svg viewBox="0 0 300 46" preserveAspectRatio="none" aria-hidden="true">
+                  <path class="fill" d="M24 3 H276 A20 20 0 0 1 276 43 H24 A20 20 0 0 1 24 3 Z" />
+                  <path
+                    class="rule"
+                    pathLength="1"
+                    d="M24 3 H276 A20 20 0 0 1 276 43 H24 A20 20 0 0 1 24 3 Z"
+                  />
+                </svg>
+                <span>IIT Madras BS <i aria-hidden="true" /> since 2021</span>
+              </p>
+              <p class="line">एकत्र उदयामः, सहैव प्रज्वलामः।</p>
+            </div>
+            <NextEventNotice :ready="settled" :still="RM" />
           </div>
           <div class="band" aria-hidden="true" />
         </section>
@@ -296,7 +298,6 @@
       </div>
     </div>
     <EventSheet :list="sheetList" />
-    <NoticePicker :model-value="notice" />
   </main>
 </template>
 
@@ -306,11 +307,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { takeLaunchCut } from '../lib/launch.js';
 import EventSheet from '../components/site/EventSheet.vue';
 import LineIcon from '../components/site/LineIcon.vue';
-import NextEventTag from '../components/site/NextEventTag.vue';
-import NoticeGarland from '../components/site/notice/NoticeGarland.vue';
-import NoticeInvite from '../components/site/notice/NoticeInvite.vue';
-import NoticePicker from '../components/site/notice/NoticePicker.vue';
-import NoticePosterTag from '../components/site/notice/NoticePosterTag.vue';
+import NextEventNotice from '../components/site/NextEventNotice.vue';
 import PatFigure from '../components/site/PatFigure.vue';
 import PatPosters from '../components/site/PatPosters.vue';
 import PatSearch from '../components/site/PatSearch.vue';
@@ -332,7 +329,7 @@ import { COMMUNITIES, TEAMS } from '../data/teams.js';
 
 const forestSet = `${ASSET.forest800} 800w, ${ASSET.forest} 1400w`;
 
-// The event sheet opened from the next-event tag pages through what is on air and coming up.
+// The event sheet opened from the next-event notice pages through what is on air and coming up.
 // A deep link to any other event still opens, alone.
 const happening = computed(() => [...liveEvents, ...upcomingEvents]);
 const sheetList = computed(() => {
@@ -419,9 +416,6 @@ const PLACES = [
 // ---- Intro ----------------------------------------------------------------------------------
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
 const RM = ref(motionPreference.matches);
-// Prototype: which next-event notice to show (?v=now|a|b|c before the #). Defaults to A.
-const notice =
-  ['now', 'a', 'b', 'c'].find((v) => v === new URLSearchParams(location.search).get('v')) ?? 'a';
 // Straight from the launch film, whose last frame is this page composed: no intro.
 const composed = RM.value || takeLaunchCut();
 const rolling = ref(!composed);
@@ -1127,6 +1121,13 @@ img.forest.ink {
   margin-top: clamp(22px, 5vh, 52px);
   padding: 0 20px;
   text-align: center;
+  /* Keeps the stacking context the drifting transform used to create for the title. */
+  isolation: isolate;
+}
+.drift {
+  display: grid;
+  justify-items: center;
+  gap: inherit;
   transform: translate(calc(var(--mx) * -3px), calc(var(--my) * -2px));
   transition: transform 0.8s var(--ease-out);
 }
@@ -1827,7 +1828,7 @@ h3 {
     animation: none;
   }
   .stage,
-  .title {
+  .drift {
     transform: none;
     transition: none;
   }
