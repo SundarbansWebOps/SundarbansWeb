@@ -22,6 +22,7 @@
 
     <button type="button" class="art" :aria-label="`Poster: ${next.title}`" @click="open">
       <img v-if="poster" :src="poster" alt="" decoding="async" />
+      <img v-else class="crest" :src="CREST" alt="" decoding="async" />
     </button>
 
     <div class="copy">
@@ -47,6 +48,7 @@
 </template>
 
 <script setup>
+import CREST from '../../../assets/crest.webp';
 import { openEvent } from '../../../lib/events.js';
 import { countdown, cta, dateParts, kicker, next, parts, poster, when } from './next-event.js';
 
@@ -172,6 +174,11 @@ const open = (ev) => openEvent(next.value.id, ev);
   height: 100%;
   object-fit: cover;
   object-position: 50% 30%;
+}
+/* No poster on the event: the house crest stands in, centred on the paper. */
+.art .crest {
+  padding: 14%;
+  object-fit: contain;
 }
 
 .copy {
