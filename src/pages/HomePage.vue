@@ -19,7 +19,9 @@
   >
     <div ref="scrollEl" class="scroll" @animationend.self="unrolled">
       <div class="rod" aria-hidden="true" />
-      <NextEventTag :ready="settled" :still="RM" />
+      <NextEventTag v-if="notice === 'now'" :ready="settled" :still="RM" />
+      <NoticePosterTag v-else-if="notice === 'a'" :ready="settled" :still="RM" />
+      <NoticeGarland v-else-if="notice === 'c'" :ready="settled" :still="RM" />
 
       <div class="paper">
         <!-- ============ Title panel ============ -->
@@ -89,6 +91,7 @@
               <span>IIT Madras BS <i aria-hidden="true" /> since 2021</span>
             </p>
             <p class="line">एकत्र उदयामः, सहैव प्रज्वलामः।</p>
+            <NoticeInvite v-if="notice === 'b'" :ready="settled" :still="RM" />
           </div>
           <div class="band" aria-hidden="true" />
         </section>
@@ -293,6 +296,7 @@
       </div>
     </div>
     <EventSheet :list="sheetList" />
+    <NoticePicker :model-value="notice" />
   </main>
 </template>
 
@@ -303,6 +307,10 @@ import { takeLaunchCut } from '../lib/launch.js';
 import EventSheet from '../components/site/EventSheet.vue';
 import LineIcon from '../components/site/LineIcon.vue';
 import NextEventTag from '../components/site/NextEventTag.vue';
+import NoticeGarland from '../components/site/notice/NoticeGarland.vue';
+import NoticeInvite from '../components/site/notice/NoticeInvite.vue';
+import NoticePicker from '../components/site/notice/NoticePicker.vue';
+import NoticePosterTag from '../components/site/notice/NoticePosterTag.vue';
 import PatFigure from '../components/site/PatFigure.vue';
 import PatPosters from '../components/site/PatPosters.vue';
 import PatSearch from '../components/site/PatSearch.vue';
@@ -411,6 +419,9 @@ const PLACES = [
 // ---- Intro ----------------------------------------------------------------------------------
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
 const RM = ref(motionPreference.matches);
+// Prototype: which next-event notice to show (?v=now|a|b|c before the #). Defaults to A.
+const notice =
+  ['now', 'a', 'b', 'c'].find((v) => v === new URLSearchParams(location.search).get('v')) ?? 'a';
 // Straight from the launch film, whose last frame is this page composed: no intro.
 const composed = RM.value || takeLaunchCut();
 const rolling = ref(!composed);
