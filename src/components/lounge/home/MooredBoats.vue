@@ -164,6 +164,8 @@ const shown = ref(false);
 const boats = computed(() => {
   const rejected = (g) => g.review_status === 'rejected';
   const joined = lounge.groups
+    // Groups the student is already in stay away unless "Show groups I'm in" is on.
+    .filter((g) => member.joined_groups_shown || !g.joined)
     // Hidden ("I've joined all my groups") keeps only what the student can still fix.
     .filter((g) => !member.group_forms_hidden || isSuperAdmin.value || (rejected(g) && g.fixable))
     .map((g) => ({
@@ -179,7 +181,13 @@ const boats = computed(() => {
             : 'The admins could not approve this one.'
         : [
             g.purpose,
-            g.review_status === 'pending' ? 'Under review.' : '',
+            g.joined
+              ? "You're in this group."
+              : g.add_state === 'waiting'
+                ? 'Waiting for an admin to add you.'
+                : g.review_status === 'pending'
+                  ? 'Under review.'
+                  : '',
             g.invite_error
               ? 'Invite link could not be loaded. Open to retry.'
               : !g.invite_url && g.applied
@@ -192,6 +200,7 @@ const boats = computed(() => {
       to: `/lounge/forms/${g.id}`,
       applied: true,
       review: g.review_status,
+      joined: g.joined,
       closed: rejected(g) && !g.fixable,
       kind: g.community_id ? 'community' : g.region_id ? 'region' : 'house',
     }));
@@ -233,15 +242,17 @@ const kick = (g) =>
     ? 'Preview only'
     : g.review === 'rejected'
       ? 'Not approved'
-      : g.kind === 'house'
-        ? 'Start here'
-        : g.kind === 'region'
-          ? 'Your region'
-          : g.kind === 'other-region'
-            ? 'Regional group'
-            : g.applied
-              ? 'You applied'
-              : 'Apply';
+      : g.joined
+        ? "You're in"
+        : g.kind === 'house'
+          ? 'Start here'
+          : g.kind === 'region'
+            ? 'Your region'
+            : g.kind === 'other-region'
+              ? 'Regional group'
+              : g.applied
+                ? 'You applied'
+                : 'Apply';
 
 let io = null;
 onMounted(() => {

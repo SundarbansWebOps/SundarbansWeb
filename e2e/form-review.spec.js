@@ -323,3 +323,74 @@ test('a house form without guests shows no member or guest labels', async ({ pag
   await expect(dialog.getByRole('combobox', { name: 'Review' })).toBeVisible();
   await expect(dialog.locator('tbody .adm-badge', { hasText: /^Member$/ })).toHaveCount(0);
 });
+
+// A form with a WhatsApp invite: the Review column becomes "Added to group".
+function groupDesk() {
+  const data = reviewDesk();
+  const adds = [
+    {
+      email: '26f1000003@ds.study.iitm.ac.in',
+      added_at: '2026-10-05T09:00:00Z',
+      added_by: 'x',
+      added_by_name: 'House Secretary',
+    },
+  ];
+  return {
+    ...data,
+    list_form_adds: () => ({ tracks: true, adds }),
+    mark_form_added: (args) => {
+      const mark = {
+        email: args.p_email,
+        added_at: '2026-10-10T09:00:00Z',
+        added_by: 'me',
+        added_by_name: 'Super Admin',
+      };
+      adds.push(mark);
+      return { ...mark, created: true };
+    },
+    undo_form_added: (args) => {
+      adds.splice(
+        adds.findIndex((a) => a.email === args.p_email),
+        1
+      );
+      return true;
+    },
+  };
+}
+
+test('on a group form admins mark who was added, with a short undo', async ({ page }) => {
+  const { calls, dialog } = await openResponses(page, groupDesk());
+  await expect(dialog.getByRole('columnheader', { name: 'Added to group' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /^Approve/ })).toHaveCount(0);
+  await expect(dialog.getByText(/1 added/)).toBeVisible();
+  const done = dialog.locator('tbody tr', { hasText: '#3' });
+  await expect(done.getByText('Added', { exact: true })).toBeVisible();
+  await expect(done.getByText(/House Secretary/)).toBeVisible();
+
+  await dialog
+    .getByRole('button', { name: 'Mark 26f1000001@ds.study.iitm.ac.in added to the group' })
+    .click();
+  const call = await callTo(calls, '/rest/v1/rpc/mark_form_added');
+  expect(JSON.parse(call.body)).toEqual({
+    p_form_id: FORM_ID,
+    p_email: '26f1000001@ds.study.iitm.ac.in',
+  });
+  const first = dialog.locator('tbody tr', { hasText: '#1' });
+  await expect(first.getByText('Added', { exact: true })).toBeVisible();
+  await expect(dialog.getByRole('status')).toContainText('Asha Full marked as added to the group.');
+
+  await pick(dialog, 'Group', 'Not added yet · 1');
+  await expect(dialog.locator('tbody tr')).toHaveCount(1);
+  await pick(dialog, 'Group', 'Anyone · 3');
+
+  await dialog.getByRole('status').getByRole('button', { name: 'Undo' }).click();
+  await callTo(calls, '/rest/v1/rpc/undo_form_added');
+  await expect(first.getByRole('button', { name: /^Mark .* added to the group$/ })).toBeVisible();
+  await expect(dialog.getByRole('status')).not.toContainText('marked as added');
+
+  const downloadPromise = page.waitForEvent('download');
+  await dialog.getByRole('button', { name: 'Download CSV' }).click();
+  const csv = await readFile(await (await downloadPromise).path(), 'utf8');
+  expect(csv.split('\n')[0]).toContain('added_to_group,added_by,added_at');
+  expect(csv).not.toContain('review_status');
+});

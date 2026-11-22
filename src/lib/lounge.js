@@ -19,7 +19,7 @@ export async function loadLounge() {
     supabase
       .from('members')
       .select(
-        'id,member_code,full_name,preferred_name,gender,email,phone,region_id,tour_seen_at,group_forms_hidden,certificate_name,certificate_name_confirmed_at,cohort,region:regions(code,name)'
+        'id,member_code,full_name,preferred_name,gender,email,phone,region_id,tour_seen_at,group_forms_hidden,joined_groups_shown,certificate_name,certificate_name_confirmed_at,cohort,region:regions(code,name)'
       )
       .eq('id', uid)
       .single()
@@ -40,6 +40,7 @@ export const completeProfile = ({ full_name = null, gender = null }) =>
 export const markTourSeen = (seen = true) => rpc('set_my_tour_seen', { p_seen: seen });
 export const setGroupFormsHidden = (hidden) =>
   rpc('set_group_forms_hidden', { p_hidden: !!hidden });
+export const setJoinedGroupsShown = (shown) => rpc('set_joined_groups_shown', { p_shown: !!shown });
 export const selectInitialRegion = (regionId) =>
   rpc('select_my_initial_region', { p_region_id: regionId });
 export const requestRegionChange = (regionId, reason) =>
@@ -117,6 +118,21 @@ export const groupFormsForMember = (forms, regionId) =>
 // The admin review of a student's response: 'pending' | 'approved' | 'rejected', or null when
 // not submitted (or when the database predates review, which behaves as before).
 export const reviewOf = (form) => form?.review_status ?? null;
+// In the group: an admin marked the student added (forms with a WhatsApp invite), or approved them
+// (forms that keep the review). Joined groups leave the Lounge unless the student asks to see them.
+export const isJoined = (form) => !!form?.added || reviewOf(form) === 'approved';
+// On a form that tracks WhatsApp adds: 'added', 'waiting' for an admin, or null (not tracked, not
+// sent, or turned down before tracking began).
+export const groupAddState = (form) =>
+  !form?.tracks_adds || !form?.submitted || reviewOf(form) === 'rejected'
+    ? null
+    : form.added
+      ? 'added'
+      : 'waiting';
+export const ADD_STATE_TEXT = {
+  added: "You're in the WhatsApp group.",
+  waiting: 'Waiting for an admin to add you to the WhatsApp group.',
+};
 // A response is final unless an admin rejected it; a rejected one can be sent again.
 export const isLocked = (form) => !!form?.submitted && reviewOf(form) !== 'rejected';
 // Whether the form takes responses right now (the backend's verdict, else the open flag).
@@ -149,14 +165,20 @@ export function formUnavailableMessage(form, regionId, cohort) {
   return 'This form is not accepting responses right now.';
 }
 
+// Every group the student applied to, joined ones included: the Lounge hides those (`joined`)
+// unless the student switched them back on, so the switch never needs a refetch.
 export async function listGroups(forms = null, regionId = null) {
-  // Approved forms leave the Lounge: the student is in, nothing is left to do.
   const submitted = groupFormsForMember(forms ?? (await listForms()), regionId).filter(
-    (form) => form.submitted && reviewOf(form) !== 'approved'
+    (form) => form.submitted
   );
   return Promise.all(
     submitted.map(async (form) => {
-      const review = { review_status: reviewOf(form), review_reason: form.review_reason ?? null };
+      const review = {
+        review_status: reviewOf(form),
+        review_reason: form.review_reason ?? null,
+        joined: isJoined(form),
+        add_state: groupAddState(form),
+      };
       // A rejected response has no invite to show: the student fills the form again.
       if (review.review_status === 'rejected') {
         return {

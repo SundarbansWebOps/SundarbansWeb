@@ -886,6 +886,19 @@ export const REJECT_REASONS = [
 export const REVIEW_REASON_MAX = 500;
 export const REVIEW_LABEL = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected' };
 
+// "Added to group": forms that hand out a WhatsApp invite track who an admin has added instead of
+// reviewing them. One mark per email covers both sign-up routes. A mark is permanent; the admin who
+// made it can undo it for a few seconds (the database allows 15, the UI offers 10).
+export const ADD_UNDO_MS = 10_000;
+export async function listFormAdds(formId) {
+  const res = await supabase.rpc('list_form_adds', { p_form_id: formId }).then(unwrap);
+  return { tracks: !!res?.tracks, adds: asList(res?.adds) };
+}
+export const markFormAdded = (formId, email) =>
+  supabase.rpc('mark_form_added', { p_form_id: formId, p_email: email }).then(unwrap);
+export const undoFormAdded = (formId, email) =>
+  supabase.rpc('undo_form_added', { p_form_id: formId, p_email: email }).then(unwrap);
+
 // Approve, reject (reason required) or undo (back to pending) one response. The database checks
 // that the caller manages the form. expectedAt is the version the reviewer saw, passed back
 // exactly as loaded (resubmitted_at ?? submitted_at); if the member has since resent their
@@ -929,7 +942,9 @@ export function sortResponses(rows, order = 'newest') {
   );
 }
 
-export function formResponsesToCsv(payload) {
+// With `tracksAdds`, each row carries `added` ({ added_at, added_by_name } or null) and the review
+// columns give way to the add mark.
+export function formResponsesToCsv(payload, { tracksAdds = false } = {}) {
   const rows = asList(payload);
   const fields = [];
   const byIdentity = new Map();
@@ -953,16 +968,16 @@ export function formResponsesToCsv(payload) {
   }
   // Guest-form columns only appear when the list includes PAN BS event-page registrations.
   const hasGuests = rows.some((row) => row.guestForm);
+  const statusKeys = tracksAdds
+    ? ['added_to_group', 'added_by', 'added_at']
+    : ['review_status', 'review_reason', 'reviewed_by', 'reviewed_at'];
   const usedLabels = new Set([
     'serial',
     'email',
     'full_name',
     'preferred_name',
     'submitted_at',
-    'review_status',
-    'review_reason',
-    'reviewed_by',
-    'reviewed_at',
+    ...statusKeys,
     ...(hasGuests ? ['registered_as', 'signed_up_via', 'house', 'phone', 'on_roster'] : []),
   ]);
   const labelCounts = new Map();
@@ -997,10 +1012,7 @@ export function formResponsesToCsv(payload) {
         ]
       : []),
     { key: 'submitted_at', label: 'submitted_at' },
-    { key: 'review_status', label: 'review_status' },
-    { key: 'review_reason', label: 'review_reason' },
-    { key: 'reviewed_by', label: 'reviewed_by' },
-    { key: 'reviewed_at', label: 'reviewed_at' },
+    ...statusKeys.map((key) => ({ key, label: key })),
     ...fields.map((field) => ({ key: field.column, label: field.label })),
   ];
   const csvRows = rows.map((row) => {
@@ -1015,10 +1027,18 @@ export function formResponsesToCsv(payload) {
       phone: row.phone,
       on_roster: row.guestForm ? (row.on_roster ? 'yes' : 'no') : '',
       submitted_at: row.submitted_at,
-      review_status: row.review_status,
-      review_reason: row.review_reason,
-      reviewed_by: row.reviewer_name ?? row.reviewer_email,
-      reviewed_at: row.reviewed_at,
+      ...(tracksAdds
+        ? {
+            added_to_group: row.added ? 'yes' : 'no',
+            added_by: row.added?.added_by_name ?? '',
+            added_at: row.added?.added_at ?? '',
+          }
+        : {
+            review_status: row.review_status,
+            review_reason: row.review_reason,
+            reviewed_by: row.reviewer_name ?? row.reviewer_email,
+            reviewed_at: row.reviewed_at,
+          }),
     };
     for (const captured of row.field_schema || []) {
       const identity = JSON.stringify([

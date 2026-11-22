@@ -84,16 +84,29 @@
               Register again
             </button>
           </template>
-          <p v-else-if="isRegistered(event)" class="evd-done">
-            <span class="evd-tick" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="m5 12.5 4.2 4L19 7" /></svg>
-            </span>
-            <span v-if="early"><b>You're registered.</b></span>
-            <span v-else
-              ><b>You're registered.</b> The Join button shows up in your Lounge 15 minutes before
-              it starts, {{ until(event.starts_at) }}.</span
-            >
-          </p>
+          <template v-else-if="isRegistered(event)">
+            <p class="evd-done">
+              <span class="evd-tick" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="m5 12.5 4.2 4L19 7" /></svg>
+              </span>
+              <span v-if="early"><b>You're registered.</b></span>
+              <span v-else
+                ><b>You're registered.</b> The Join button shows up in your Lounge 15 minutes before
+                it starts, {{ until(event.starts_at) }}.</span
+              >
+            </p>
+            <!-- The event's WhatsApp group: in once an admin marks it; until then the invite is
+                 fetched again here, since it was only shown once, right after registering. -->
+            <p v-if="addState === 'added'" class="evd-small">You're in the WhatsApp group.</p>
+            <p v-else-if="addState === 'waiting'" class="ff-invite">
+              WhatsApp group:
+              <template v-if="invite">
+                <a :href="invite" target="_blank" rel="noopener noreferrer">Open the invite</a> and
+                request to join.
+              </template>
+              An admin adds you after checking.
+            </p>
+          </template>
           <template v-else-if="regOpen">
             <button type="button" class="gp-btn is-big" @click="step = 'form'">Register</button>
             <p v-if="!early" class="evd-small">Starts {{ until(event.starts_at) }}.</p>
@@ -207,7 +220,7 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue';
 import { errorText } from '../../lib/auth.js';
-import { reviewOf } from '../../lib/lounge.js';
+import { groupAddState, reviewOf } from '../../lib/lounge.js';
 import { img } from '../../lib/events.js';
 import { KITE_MINE, LANTERN } from './home/art.js';
 import FormQuestions from './FormQuestions.vue';
@@ -253,6 +266,16 @@ const joinHref = computed(() => meetHref(props.event));
 const mark = computed(() => markOf(props.event));
 const cert = computed(() => certOf(props.event));
 const regForm = computed(() => formByEvent(props.event.id));
+const addState = computed(() => groupAddState(regForm.value));
+watch(
+  () => addState.value === 'waiting' && regForm.value?.id,
+  async (formId) => {
+    if (!formId || invite.value) return;
+    const url = await fetchInvite(formId).catch(() => '');
+    if (regForm.value?.id === formId && !invite.value) invite.value = url || '';
+  },
+  { immediate: true }
+);
 const regOpen = computed(
   () =>
     !isOpenSession(props.event) &&

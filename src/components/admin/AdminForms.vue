@@ -498,6 +498,7 @@
               <b>{{ rows.length }}</b>
               {{ rows.length === 1 ? 'response' : 'responses' }}
             </template>
+            <template v-if="tracksAdds"> · {{ addedCount }} added</template>
             · {{ responseFields.length }}
             {{ responseFields.length === 1 ? 'question' : 'questions' }}
             <span class="resp-scope"> · {{ scopeOf(responsesFor) }}</span>
@@ -512,8 +513,9 @@
           Download CSV
         </button>
       </div>
-      <!-- One filter row: who (PAN BS only), then the one refinement that applies to them
-           (review status for members, house for guests), then sort. -->
+      <!-- One filter row: who (PAN BS only), then what applies to them: on a form that tracks
+           WhatsApp adds, added or not (everyone) plus house (guests); otherwise review status
+           (members) or house (guests). Then sort. -->
       <div v-if="rows.length" class="resp-tools">
         <div class="resp-filters">
           <div v-if="takesGuests" class="seg" role="group" aria-label="Show">
@@ -527,6 +529,10 @@
               {{ o.label }} <span class="n">{{ whoCounts[o.value] }}</span>
             </button>
           </div>
+          <label v-if="tracksAdds" class="sort">
+            <span>Group</span>
+            <AdminSelect v-model="addedFilter" :options="groupOptions" />
+          </label>
           <label v-if="showHouseFilter" class="sort">
             <span>House</span>
             <AdminSelect v-model="guestHouse" :options="guestHouses" />
@@ -536,7 +542,7 @@
             <AdminSelect v-model="statusFilter" :options="reviewOptions" />
           </label>
           <button
-            v-if="statusFilter !== 'all' || guestHouse !== 'all'"
+            v-if="statusFilter !== 'all' || guestHouse !== 'all' || addedFilter !== 'all'"
             type="button"
             class="adm-btn ghost small"
             @click="clearFilter"
@@ -563,7 +569,7 @@
             <tr>
               <th scope="col" class="who">Submitted by</th>
               <th scope="col">Submitted</th>
-              <th scope="col" class="review">Review</th>
+              <th scope="col" class="review">{{ tracksAdds ? 'Added to group' : 'Review' }}</th>
               <th v-for="f in responseFields" :key="f.identity" scope="col">{{ f.label }}</th>
             </tr>
           </thead>
@@ -590,7 +596,26 @@
                   >Resent {{ day(r.resubmitted_at) }}</small
                 >
               </td>
-              <td v-if="r.guestForm" class="review">
+              <td v-if="tracksAdds" class="review">
+                <template v-if="r.added">
+                  <span class="adm-badge mari">Added</span>
+                  <p v-if="addedBy(r.added)" class="by">{{ addedBy(r.added) }}</p>
+                </template>
+                <button
+                  v-else
+                  type="button"
+                  class="adm-btn mari small"
+                  :disabled="adding[normalizeEmail(r.email)]"
+                  :aria-label="`Mark ${r.email} added to the group`"
+                  @click="markAdded(r)"
+                >
+                  Mark added
+                </button>
+                <p v-if="!r.guestForm && r.review_status === 'rejected'" class="why">
+                  Rejected earlier{{ r.review_reason ? `: ${r.review_reason}` : '' }}
+                </p>
+              </td>
+              <td v-else-if="r.guestForm" class="review">
                 <span class="none">–</span>
                 <p class="by">
                   {{
@@ -610,7 +635,8 @@
                 <p v-if="r.review_status !== 'pending' && reviewedBy(r)" class="by">
                   {{ reviewedBy(r) }}
                 </p>
-                <div class="adm-chips actions">
+                <!-- Without the add list it is unknown whether this form is reviewed at all. -->
+                <div v-if="!addsFailed" class="adm-chips actions">
                   <button
                     v-if="r.review_status !== 'approved'"
                     type="button"
@@ -685,6 +711,20 @@
             </tr>
           </tbody>
         </table>
+      </div>
+      <!-- The live region stays mounted so the toast is announced when it appears. -->
+      <div class="add-toast-slot" role="status">
+        <div v-if="undoable" :key="undoable.email" class="add-toast">
+          <span>{{ undoable.label }} marked as added to the group.</span>
+          <button
+            type="button"
+            class="adm-btn ghost small"
+            :disabled="undoable.busy"
+            @click="undoAdd"
+          >
+            Undo
+          </button>
+        </div>
       </div>
     </AdminDialog>
 
@@ -764,10 +804,15 @@ import {
   REJECT_REASONS,
   REVIEW_LABEL,
   REVIEW_REASON_MAX,
+  ADD_UNDO_MS,
   canManageEvent,
   downloadCsv,
   exportFormResponses,
   listFormGuests,
+  listFormAdds,
+  markFormAdded,
+  normalizeEmail,
+  undoFormAdded,
   fieldKeyFromLabel,
   formFileLink,
   formResponsesToCsv,
@@ -872,7 +917,22 @@ const responsesFor = ref(null);
 // listed with the member responses as one list (mergeRegistrations).
 const guests = ref([]);
 const responses = ref([]);
-const rows = computed(() => mergeRegistrations(responses.value, guests.value));
+// "Added to group" (forms that hand out a WhatsApp invite): admins tick people off instead of
+// reviewing them. `adds` maps a normalised email to its mark; each row carries its mark as `added`.
+const tracksAdds = ref(false);
+const addsFailed = ref(false);
+const adds = ref(new Map());
+const rows = computed(() => {
+  const list = mergeRegistrations(responses.value, guests.value);
+  if (!tracksAdds.value) return list;
+  return list.map((r) => ({ ...r, added: adds.value.get(normalizeEmail(r.email)) ?? null }));
+});
+const addedCount = computed(() => rows.value.filter((r) => r.added).length);
+const addedFilter = ref('all');
+const adding = reactive({});
+// The latest mark this admin made, offered for Undo for ADD_UNDO_MS.
+const undoable = ref(null);
+let undoTimer = 0;
 const takesGuests = computed(
   () =>
     guests.value.length > 0 ||
@@ -940,7 +1000,26 @@ const statusOf = (r) => r.review_status ?? 'pending';
 const whoRows = computed(() =>
   whoFilter.value === 'all' ? rows.value : rows.value.filter((r) => r.kind === whoFilter.value)
 );
-const showReviewFilter = computed(() => !takesGuests.value || whoFilter.value === 'member');
+const showReviewFilter = computed(
+  () => !tracksAdds.value && (!takesGuests.value || whoFilter.value === 'member')
+);
+const groupOptions = computed(() => {
+  const added = whoRows.value.filter((r) => r.added).length;
+  const waiting = whoRows.value.length - added;
+  return [
+    { value: 'all', label: `Anyone · ${whoRows.value.length}` },
+    {
+      value: 'waiting',
+      label: `Not added yet · ${waiting}`,
+      disabled: !waiting && addedFilter.value !== 'waiting',
+    },
+    {
+      value: 'added',
+      label: `Added · ${added}`,
+      disabled: !added && addedFilter.value !== 'added',
+    },
+  ];
+});
 const showHouseFilter = computed(() => whoFilter.value === 'guest' && guestHouses.value.length > 2);
 const EVENT_PAGE = 'event-page';
 const reviewOptions = computed(() => {
@@ -961,7 +1040,14 @@ const reviewOptions = computed(() => {
   ];
 });
 const matchesFilter = (r) => {
+  if (
+    tracksAdds.value &&
+    addedFilter.value !== 'all' &&
+    !!r.added !== (addedFilter.value === 'added')
+  )
+    return false;
   if (whoFilter.value === 'guest') return inHouse(r);
+  if (tracksAdds.value) return true;
   if (statusFilter.value === 'all') return true;
   if (statusFilter.value === EVENT_PAGE) return r.guestForm;
   return !r.guestForm && statusOf(r) === statusFilter.value;
@@ -969,16 +1055,21 @@ const matchesFilter = (r) => {
 function clearFilter() {
   statusFilter.value = 'all';
   guestHouse.value = 'all';
+  addedFilter.value = 'all';
 }
+// Switching who drops the refinement that only made sense for them; "Group" applies to everyone.
 function showWho(value) {
   whoFilter.value = value;
-  clearFilter();
+  statusFilter.value = 'all';
+  guestHouse.value = 'all';
 }
 // Serials come from the server and never change with the view.
 const shownResponses = computed(() =>
   sortResponses(whoRows.value.filter(matchesFilter), sortOrder.value)
 );
 const memberName = (r) => r.member_full_name || r.member_preferred_name || '';
+const addedBy = (mark) =>
+  [mark.added_by_name, mark.added_at && day(mark.added_at)].filter(Boolean).join(' · ');
 const reviewedBy = (r) =>
   [r.reviewer_name ?? r.reviewer_email, r.reviewed_at && day(r.reviewed_at)]
     .filter(Boolean)
@@ -1639,6 +1730,7 @@ function releaseThumbs() {
 }
 function closeResponses() {
   responseRun++;
+  dropUndo();
   releaseThumbs();
   responsesFor.value = null;
 }
@@ -1668,6 +1760,11 @@ async function openResponses(f) {
       });
   }
   guests.value = [];
+  tracksAdds.value = false;
+  addsFailed.value = false;
+  adds.value = new Map();
+  addedFilter.value = 'all';
+  dropUndo();
   whoFilter.value = 'all';
   guestHouse.value = 'all';
   reviewError.value = '';
@@ -1676,17 +1773,26 @@ async function openResponses(f) {
   sortOrder.value = 'newest';
   respLoading.value = true;
   try {
-    const [rows, guestRows] = await Promise.all([
+    const [rows, guestRows, added] = await Promise.all([
       exportFormResponses(f.id),
       // A failed guest load must not look like a form nobody registered for as a guest.
       listFormGuests(f.id).catch((err) => {
         if (run === responseRun) respError.value = `Couldn't load guests: ${errorText(err)}`;
         return [];
       }),
+      listFormAdds(f.id).catch((err) => {
+        if (run === responseRun) {
+          respError.value = `Couldn't load who has been added: ${errorText(err)}`;
+          addsFailed.value = true;
+        }
+        return { tracks: false, adds: [] };
+      }),
     ]);
     if (run !== responseRun) return;
     responses.value = rows;
     guests.value = guestRows ?? [];
+    tracksAdds.value = added.tracks;
+    adds.value = new Map(added.adds.map((a) => [normalizeEmail(a.email), a]));
   } catch (e) {
     if (run === responseRun) respError.value = errorText(e);
   } finally {
@@ -1809,9 +1915,61 @@ async function confirmReject() {
   if (await review(target, 'rejected', reason)) rejectDlg.value?.close();
 }
 
+function setAdd(email, mark) {
+  const next = new Map(adds.value);
+  if (mark) next.set(email, mark);
+  else next.delete(email);
+  adds.value = next;
+}
+function dropUndo() {
+  clearTimeout(undoTimer);
+  undoable.value = null;
+}
+// Saved once the RPC returns; marking someone already added (another admin got there first) just
+// shows their mark, with nothing to undo.
+async function markAdded(r) {
+  const email = normalizeEmail(r.email);
+  const formId = responsesFor.value?.id;
+  const run = responseRun;
+  if (!formId || adding[email]) return;
+  adding[email] = true;
+  reviewError.value = '';
+  try {
+    const mark = await markFormAdded(formId, email);
+    // Still applied if the dialog was reopened on the same form meanwhile.
+    if (responsesFor.value?.id !== formId) return;
+    setAdd(email, mark);
+    if (mark?.created && run === responseRun) {
+      dropUndo();
+      undoable.value = { formId, email, run, label: memberName(r) || r.email, busy: false };
+      undoTimer = setTimeout(dropUndo, ADD_UNDO_MS);
+    }
+  } catch (e) {
+    if (run === responseRun) reviewError.value = errorText(e);
+  } finally {
+    delete adding[email];
+  }
+}
+async function undoAdd() {
+  const u = undoable.value;
+  if (!u || u.busy) return;
+  u.busy = true;
+  clearTimeout(undoTimer);
+  try {
+    await undoFormAdded(u.formId, u.email);
+    if (responsesFor.value?.id === u.formId) setAdd(u.email, null);
+  } catch (e) {
+    if (u.run === responseRun) reviewError.value = errorText(e);
+  } finally {
+    if (undoable.value === u) undoable.value = null;
+  }
+}
+
 function downloadResponses() {
   // Exports the rows the current filters show, in the order they arrived.
-  const csv = formResponsesToCsv(sortResponses(shownResponses.value, 'oldest'));
+  const csv = formResponsesToCsv(sortResponses(shownResponses.value, 'oldest'), {
+    tracksAdds: tracksAdds.value,
+  });
   downloadCsv(`${responsesFor.value.title}-responses.csv`, csv.rows, csv.columns);
 }
 </script>
@@ -2034,6 +2192,52 @@ function downloadResponses() {
     transition:
       background-color 0.2s,
       color 0.2s;
+  }
+}
+/* Undo for a fresh "Mark added": pinned to the bottom of the dialog; the bar under it drains over
+   the 10 seconds the Undo is offered. */
+.add-toast-slot {
+  position: sticky;
+  bottom: 16px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.add-toast {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 10px 10px 16px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--ink);
+  color: var(--paper);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+  pointer-events: auto;
+}
+.add-toast .adm-btn {
+  color: var(--paper);
+  border-color: currentColor;
+}
+.add-toast::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 3px;
+  background: var(--mari);
+  transform-origin: left;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .add-toast::after {
+    animation: add-undo-drain 10s linear forwards;
+  }
+}
+@keyframes add-undo-drain {
+  to {
+    transform: scaleX(0);
   }
 }
 .seg .n {

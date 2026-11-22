@@ -15,6 +15,9 @@
         {{ form.review_reason || 'The admins could not approve this one.' }}
         <template v-if="canSubmit">Fill it in again below and send it for another look.</template>
       </p>
+      <p v-else-if="addState" class="evd-small" role="status">
+        {{ ADD_STATE_TEXT[addState] }}
+      </p>
       <p
         v-else-if="form.review_status === 'pending' && form.form_kind === 'group'"
         class="evd-small"
@@ -93,7 +96,13 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { errorText, isSuperAdmin } from '../../lib/auth.js';
-import { formUnavailableMessage, isLocked, reviewOf } from '../../lib/lounge.js';
+import {
+  ADD_STATE_TEXT,
+  formUnavailableMessage,
+  groupAddState,
+  isLocked,
+  reviewOf,
+} from '../../lib/lounge.js';
 import { member } from './fixtures.js';
 import FormQuestions from './FormQuestions.vue';
 import FormSubmittedFiles from './FormSubmittedFiles.vue';
@@ -111,6 +120,7 @@ const dlg = ref(null);
 const done = ref(false);
 /* Submitted and not rejected: final. A rejected response can be filled in again. */
 const locked = computed(() => isLocked(props.form));
+const addState = computed(() => groupAddState(props.form));
 /* The dialog holds the form as it was when opened, so a resend ends the rejected state here. */
 const rejected = computed(() => !done.value && reviewOf(props.form) === 'rejected');
 const canSubmit = computed(() => props.form.accepting_responses ?? props.form.is_open ?? false);
