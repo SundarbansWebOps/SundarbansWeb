@@ -17,4 +17,5 @@ export const member = reactive({
   certificate_name: '',
   tour_seen_at: null,
   group_forms_hidden: false,
+  joined_groups_shown: false,
 });

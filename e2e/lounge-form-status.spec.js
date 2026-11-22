@@ -328,3 +328,32 @@ test('a refresh already in flight cannot undo the saved switch', async ({ page }
   await expect(sw).toHaveAttribute('aria-checked', 'true');
   await expect(page.locator('#groups')).toHaveCount(0);
 });
+
+test('a group an admin added you to leaves the Lounge until "Show groups I\'m in"', async ({
+  page,
+}) => {
+  const calls = await mockSupabase(page, {
+    data: {
+      list_lounge_forms: [
+        group(TECH, 'Technical Circle', { submitted: true, tracks_adds: true, added: true }),
+        group(CULT, 'Cultural Circle', { community_id: 3, submitted: true, tracks_adds: true }),
+      ],
+      get_lounge_form_invite: INVITE,
+    },
+  });
+  await page.goto('/#/lounge?room=groups');
+  await expect(page.locator('.moor')).toContainText('Cultural Circle');
+  await expect(page.locator('.moor')).toContainText('Waiting for an admin to add you.');
+  await expect(page.locator('.moor')).not.toContainText('Technical Circle');
+
+  await page.getByRole('button', { name: /^Your profile/ }).click();
+  const sw = page.getByRole('switch', { name: /Show groups I'm in/ });
+  await expect(sw).toHaveAttribute('aria-checked', 'false');
+  await sw.click();
+  const call = await callTo(calls, '/rest/v1/rpc/set_joined_groups_shown', 'POST');
+  expect(JSON.parse(call.body)).toEqual({ p_shown: true });
+  await expect(sw).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.moor')).toContainText('Technical Circle');
+  await expect(page.locator('.moor')).toContainText("You're in this group.");
+});

@@ -40,6 +40,7 @@
           {{ form.review_reason || 'The admins could not approve this one.' }}
           <template v-if="canSubmit">Fill it in again below and send it for another look.</template>
         </p>
+        <p v-else-if="addState" class="msg" role="status">{{ ADD_STATE_TEXT[addState] }}</p>
         <p
           v-else-if="form.review_status === 'pending' && form.form_kind === 'group'"
           class="msg"
@@ -135,7 +136,13 @@ import {
   submitLoungeForm,
 } from '../components/lounge/session.js';
 import { auth, errorText, isSuperAdmin } from '../lib/auth.js';
-import { formUnavailableMessage, isLocked, reviewOf } from '../lib/lounge.js';
+import {
+  ADD_STATE_TEXT,
+  formUnavailableMessage,
+  groupAddState,
+  isLocked,
+  reviewOf,
+} from '../lib/lounge.js';
 import { member } from '../components/lounge/fixtures.js';
 
 const route = useRoute();
@@ -156,6 +163,7 @@ const uploadsBusy = computed(() => questions.value?.uploadsBusy ?? false);
 const form = computed(() => formById(route.params.id));
 /* Submitted and not rejected: final. A rejected response can be filled in again. */
 const locked = computed(() => isLocked(form.value));
+const addState = computed(() => groupAddState(form.value));
 const rejected = computed(() => !done.value && reviewOf(form.value) === 'rejected');
 const canSubmit = computed(
   () => !!form.value && (form.value.accepting_responses ?? form.value.is_open ?? false)

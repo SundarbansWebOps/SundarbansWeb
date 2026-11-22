@@ -22,6 +22,7 @@ export const CATEGORIES = [
       'member.contact_change',
       'member.hard_delete',
       'member.group_forms_hidden',
+      'member.joined_groups_shown',
       'member.self_profile',
       'members.update',
     ],
@@ -276,6 +277,18 @@ const ACTIONS = {
       ],
     }),
   ],
+  'member.joined_groups_shown': [
+    'people',
+    'Joined groups visibility',
+    (r) => ({
+      parts: [
+        actor(r),
+        nv(r).joined_groups_shown
+          ? ' showed the groups they are in on their Lounge'
+          : ' hid the groups they are in from their Lounge',
+      ],
+    }),
+  ],
   'members.update': [
     'people',
     'Member record changed',
@@ -369,6 +382,22 @@ const ACTIONS = {
         record(r, 'a form'),
       ],
       note: nv(r).review_reason || null,
+    }),
+  ],
+  'form.added': [
+    'forms',
+    'Marked added to group',
+    (r) => ({
+      parts: [actor(r), ' marked someone added to the WhatsApp group of ', record(r, 'a form')],
+      note: nv(r).email || null,
+    }),
+  ],
+  'form.added_undo': [
+    'forms',
+    'Undid an added mark',
+    (r) => ({
+      parts: [actor(r), ' undid an added-to-group mark on ', record(r, 'a form')],
+      note: ov(r).email || null,
     }),
   ],
   'form.resubmit': [

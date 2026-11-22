@@ -176,6 +176,10 @@ export async function mockSupabase(
           return json(row.tour_seen_at);
         }
         // Persists on the member row like the real RPC, so a reload reads it back.
+        if (name === 'set_joined_groups_shown') {
+          row.joined_groups_shown = !!args.p_shown;
+          return json(row.joined_groups_shown);
+        }
         if (name === 'set_group_forms_hidden') {
           row.group_forms_hidden = !!args.p_hidden;
           return json(row.group_forms_hidden);

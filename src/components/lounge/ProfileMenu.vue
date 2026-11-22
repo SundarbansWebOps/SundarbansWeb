@@ -88,6 +88,28 @@
           </button>
           <p v-if="saveError" class="pm-err" role="alert">{{ saveError }}</p>
         </li>
+        <!-- Groups an admin added you to leave the Lounge; this brings them back. Moot while
+             everything is hidden, and only offered once you are in a group. -->
+        <li v-if="!isSuperAdmin && !hidden && (hasJoinedGroups || shownJoined)">
+          <button
+            type="button"
+            role="switch"
+            class="pm-sw-row"
+            :aria-checked="shownJoined"
+            :disabled="savingJoined"
+            @click="toggleJoined"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m5 12.5 4.2 4L19 7" />
+            </svg>
+            <span>
+              Show groups I'm in
+              <small>Brings back the WhatsApp groups an admin has added you to.</small>
+            </span>
+            <i class="pm-sw" :class="{ on: shownJoined }" aria-hidden="true"></i>
+          </button>
+          <p v-if="joinedError" class="pm-err" role="alert">{{ joinedError }}</p>
+        </li>
         <li>
           <button type="button" @click="go('tour')">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -135,7 +157,7 @@ import * as ev from './events.js';
 import { member } from './fixtures.js';
 import { callName, initialsOf, theme } from './state.js';
 import { avatarFailed, avatarUrl, canAdmin, errorText, isSuperAdmin } from '../../lib/auth.js';
-import { saveGroupFormsHidden } from './session.js';
+import { hasJoinedGroups, saveGroupFormsHidden, saveJoinedGroupsShown } from './session.js';
 
 const emit = defineEmits(['close', 'edit', 'certs', 'tour', 'theme']);
 const router = useRouter();
@@ -154,6 +176,22 @@ async function toggleGroups() {
     saveError.value = errorText(err) || 'That did not save. Try again.';
   } finally {
     saving.value = false;
+  }
+}
+
+const shownJoined = computed(() => !!member.joined_groups_shown);
+const savingJoined = ref(false);
+const joinedError = ref('');
+async function toggleJoined() {
+  if (savingJoined.value) return;
+  savingJoined.value = true;
+  joinedError.value = '';
+  try {
+    await saveJoinedGroupsShown(!shownJoined.value);
+  } catch (err) {
+    joinedError.value = errorText(err) || 'That did not save. Try again.';
+  } finally {
+    savingJoined.value = false;
   }
 }
 

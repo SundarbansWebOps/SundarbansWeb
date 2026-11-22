@@ -15,9 +15,10 @@ import {
   markTourSeen as persistTour,
   requestCertificateNameChange,
   requestRegionChange,
-  reviewOf,
+  isJoined,
   selectInitialRegion,
   setGroupFormsHidden as persistGroupFormsHidden,
+  setJoinedGroupsShown as persistJoinedGroupsShown,
   setNoticeState,
   submitForm,
   updateProfile,
@@ -79,6 +80,7 @@ function clearMemberData() {
     certificate_name: '',
     tour_seen_at: null,
     group_forms_hidden: false,
+    joined_groups_shown: false,
   });
   preferredName.value = null;
   certName.value = '';
@@ -115,6 +117,7 @@ export function fillMember(profile) {
     tour_seen_at: profile.tour_seen_at ?? null,
     // A payload without the field (an RPC that returns a trimmed profile) keeps what we know.
     group_forms_hidden: profile.group_forms_hidden ?? member.group_forms_hidden,
+    joined_groups_shown: profile.joined_groups_shown ?? member.joined_groups_shown,
   });
   applyProfile(profile);
 }
@@ -158,7 +161,7 @@ export async function hydrateLounge() {
   lounge.certificates = asList(data.certificates);
   lounge.regionRequests = asList(data.regionRequests);
   const [groups, regions] = await Promise.all([
-    listGroups(lounge.forms, member.region_id),
+    listGroups(lounge.forms, member.region_id, member.joined_groups_shown),
     loadRegions().catch(() => []),
   ]);
   if (
@@ -221,6 +224,22 @@ export async function saveGroupFormsHidden(hidden) {
   if (auth.profile) auth.profile.group_forms_hidden = saved;
   return saved;
 }
+
+// "Show groups I'm in": brings joined groups (added or approved) back to the Lounge. The group list
+// is rebuilt here because joined groups are left out of it, invites and all, while hidden.
+export async function saveJoinedGroupsShown(shown) {
+  const saved = !!(await persistJoinedGroupsShown(shown));
+  member.joined_groups_shown = saved;
+  if (auth.profile) auth.profile.joined_groups_shown = saved;
+  const groups = await listGroups(lounge.forms, member.region_id, saved);
+  if (member.joined_groups_shown === saved) lounge.groups = asList(groups);
+  return saved;
+}
+
+// Whether the student is in any group, so the profile menu only offers the switch when it matters.
+export const hasJoinedGroups = computed(() =>
+  groupFormsForMember(lounge.forms, member.region_id).some((f) => f.submitted && isJoined(f))
+);
 
 export async function retakeTourOnServer() {
   await persistTour(false);
@@ -339,20 +358,21 @@ export const openGroupForms = computed(() => {
   );
 });
 
-// What the WhatsApp groups section shows. Approved forms are gone and "I've joined all my
-// groups" hides the rest; a rejected response always stays as a notice so the student can
-// fix it. With nothing left to show the section is removed, not left as an empty frame, but a
-// student whose groups have not been published yet keeps today's "will appear here" note.
+// What the WhatsApp groups section shows. Joined groups (added or approved) are gone unless the
+// student switched them back on, and "I've joined all my groups" hides the rest; a rejected
+// response always stays as a notice so the student can fix it. With nothing left to show the
+// section is removed, not left as an empty frame, but a student whose groups have not been
+// published yet keeps today's "will appear here" note.
 export const groupsSection = computed(() => {
   if (isSuperAdmin.value) return { show: true, rejectedOnly: false };
   const mine = groupFormsForMember(lounge.forms, member.region_id);
   // Only a rejection the student can still fix pulls the section back while it is hidden.
   const fixable = mine.some(isFixable);
   if (member.group_forms_hidden) return { show: fixable, rejectedOnly: true };
-  const anyBoat =
-    openGroupForms.value.length > 0 || mine.some((f) => f.submitted && reviewOf(f) !== 'approved');
-  const emptiedByApproval = !anyBoat && mine.some((f) => reviewOf(f) === 'approved');
-  return { show: !emptiedByApproval, rejectedOnly: false };
+  const shownSent = (f) => f.submitted && (member.joined_groups_shown || !isJoined(f));
+  const anyBoat = openGroupForms.value.length > 0 || mine.some(shownSent);
+  const emptiedByJoining = !anyBoat && mine.some((f) => f.submitted && isJoined(f));
+  return { show: !emptiedByJoining, rejectedOnly: false };
 });
 
 export const formByEvent = (eventId) => lounge.forms.find((f) => f.event_id === eventId) ?? null;
