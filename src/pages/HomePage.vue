@@ -19,6 +19,9 @@
   >
     <div ref="scrollEl" class="scroll" @animationend.self="unrolled">
       <div class="rod" aria-hidden="true" />
+      <CornerTag v-if="notice === 'a'" :ready="settled" :still="RM" />
+      <CornerScroll v-else-if="notice === 'b'" :ready="settled" :still="RM" />
+      <CornerGarland v-else-if="notice === 'c'" :ready="settled" :still="RM" />
 
       <div class="paper">
         <!-- ============ Title panel ============ -->
@@ -93,7 +96,11 @@
               </p>
               <p class="line">एकत्र उदयामः, सहैव प्रज्वलामः।</p>
             </div>
-            <NextEventNotice :ready="settled" :still="RM" />
+            <NextEventNotice
+              :class="{ 'phone-only': notice !== 'now' }"
+              :ready="settled"
+              :still="RM"
+            />
           </div>
           <div class="band" aria-hidden="true" />
         </section>
@@ -298,6 +305,7 @@
       </div>
     </div>
     <EventSheet :list="sheetList" />
+    <NoticePicker :model-value="notice" />
   </main>
 </template>
 
@@ -308,6 +316,10 @@ import { takeLaunchCut } from '../lib/launch.js';
 import EventSheet from '../components/site/EventSheet.vue';
 import LineIcon from '../components/site/LineIcon.vue';
 import NextEventNotice from '../components/site/NextEventNotice.vue';
+import CornerGarland from '../components/site/notice/CornerGarland.vue';
+import CornerScroll from '../components/site/notice/CornerScroll.vue';
+import CornerTag from '../components/site/notice/CornerTag.vue';
+import NoticePicker from '../components/site/notice/NoticePicker.vue';
 import PatFigure from '../components/site/PatFigure.vue';
 import PatPosters from '../components/site/PatPosters.vue';
 import PatSearch from '../components/site/PatSearch.vue';
@@ -416,6 +428,10 @@ const PLACES = [
 // ---- Intro ----------------------------------------------------------------------------------
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
 const RM = ref(motionPreference.matches);
+// Prototype: which desktop next-event notice to show (?v=now|a|b|c before the #). Defaults to A.
+// Above 1020px a corner design replaces the card under the motto; below, the card stays.
+const notice =
+  ['now', 'a', 'b', 'c'].find((v) => v === new URLSearchParams(location.search).get('v')) ?? 'a';
 // Straight from the launch film, whose last frame is this page composed: no intro.
 const composed = RM.value || takeLaunchCut();
 const rolling = ref(!composed);
@@ -1123,6 +1139,15 @@ img.forest.ink {
   text-align: center;
   /* Keeps the stacking context the drifting transform used to create for the title. */
   isolation: isolate;
+}
+/* Prototype: with a corner design on, the card under the motto is for phones and tablets only. */
+.title > .phone-only {
+  display: none;
+}
+@media (max-width: 1020px) {
+  .title > .phone-only {
+    display: grid;
+  }
 }
 .drift {
   display: grid;
