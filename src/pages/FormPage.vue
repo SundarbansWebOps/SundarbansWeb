@@ -461,6 +461,9 @@ h1 {
   background: var(--paper);
   color: var(--ink);
   font: inherit;
+  font-size: 16px;
+  /* Not the label's 650: at that weight the dot of "i" fuses into the stem and reads as "l". */
+  font-weight: 450;
   text-transform: none;
   letter-spacing: 0;
 }
