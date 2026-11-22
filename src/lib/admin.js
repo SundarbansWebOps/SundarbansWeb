@@ -900,6 +900,25 @@ export const reviewFormResponse = (responseId, status, expectedAt, reason = null
     })
     .then(unwrap);
 
+// A PAN BS form takes registrations two ways: members in the Lounge (reviewable responses) and
+// anyone signed out on the public event page (guest form). The admin list shows both as one list.
+// Someone on our member list is a member whichever way they came in; a member who used both appears
+// once, as the Lounge response, since that row carries the review. `guestForm` marks rows from the
+// event page: they have no serial and are never reviewed.
+export function mergeRegistrations(responses, guests) {
+  const members = asList(responses).map((r) => ({ ...r, kind: 'member', guestForm: false }));
+  const memberEmails = new Set(members.map((r) => r.email));
+  const extra = asList(guests)
+    .filter((g) => !g.in_lounge && !memberEmails.has(g.email))
+    .map((g) => ({
+      ...g,
+      kind: g.is_member ? 'member' : 'guest',
+      guestForm: true,
+      member_full_name: g.full_name,
+    }));
+  return [...members, ...extra];
+}
+
 // Serial numbers are the arrival order the database assigned; the sort/filter views never renumber.
 export function sortResponses(rows, order = 'newest') {
   const dir = order === 'oldest' ? 1 : -1;
@@ -932,6 +951,8 @@ export function formResponsesToCsv(payload) {
       fields.push(entry);
     }
   }
+  // Guest-form columns only appear when the list includes PAN BS event-page registrations.
+  const hasGuests = rows.some((row) => row.guestForm);
   const usedLabels = new Set([
     'serial',
     'email',
@@ -942,6 +963,7 @@ export function formResponsesToCsv(payload) {
     'review_reason',
     'reviewed_by',
     'reviewed_at',
+    ...(hasGuests ? ['registered_as', 'signed_up_via', 'house', 'phone', 'on_roster'] : []),
   ]);
   const labelCounts = new Map();
   for (const field of fields) {
@@ -958,9 +980,22 @@ export function formResponsesToCsv(payload) {
   }
   const columns = [
     { key: 'serial', label: 'serial' },
+    ...(hasGuests
+      ? [
+          { key: 'registered_as', label: 'registered_as' },
+          { key: 'signed_up_via', label: 'signed_up_via' },
+        ]
+      : []),
     { key: 'email', label: 'email' },
     { key: 'full_name', label: 'full_name' },
     { key: 'preferred_name', label: 'preferred_name' },
+    ...(hasGuests
+      ? [
+          { key: 'house', label: 'house' },
+          { key: 'phone', label: 'phone' },
+          { key: 'on_roster', label: 'on_roster' },
+        ]
+      : []),
     { key: 'submitted_at', label: 'submitted_at' },
     { key: 'review_status', label: 'review_status' },
     { key: 'review_reason', label: 'review_reason' },
@@ -971,9 +1006,14 @@ export function formResponsesToCsv(payload) {
   const csvRows = rows.map((row) => {
     const out = {
       serial: row.serial,
+      registered_as: row.kind,
       email: row.email,
       full_name: row.member_full_name,
       preferred_name: row.member_preferred_name,
+      signed_up_via: row.guestForm ? 'event page' : 'lounge',
+      house: row.guestForm ? row.house : 'Sundarbans',
+      phone: row.phone,
+      on_roster: row.guestForm ? (row.on_roster ? 'yes' : 'no') : '',
       submitted_at: row.submitted_at,
       review_status: row.review_status,
       review_reason: row.review_reason,

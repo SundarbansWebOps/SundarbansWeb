@@ -490,8 +490,14 @@
         </a>
         <p class="adm-note" aria-live="polite">
           <template v-if="!respLoading && !respError">
-            <b>{{ responses.length }}</b>
-            {{ responses.length === 1 ? 'response' : 'responses' }}
+            <template v-if="takesGuests">
+              <b>{{ rows.length }}</b>
+              {{ rows.length === 1 ? 'registration' : 'registrations' }}
+            </template>
+            <template v-else>
+              <b>{{ rows.length }}</b>
+              {{ rows.length === 1 ? 'response' : 'responses' }}
+            </template>
             · {{ responseFields.length }}
             {{ responseFields.length === 1 ? 'question' : 'questions' }}
             <span class="resp-scope"> · {{ scopeOf(responsesFor) }}</span>
@@ -500,24 +506,42 @@
         <button
           type="button"
           class="adm-btn ghost small"
-          :disabled="respLoading || !responses.length"
+          :disabled="respLoading || !shownResponses.length"
           @click="downloadResponses"
         >
           Download CSV
         </button>
       </div>
-      <div v-if="responses.length" class="resp-tools">
-        <div class="adm-chips" role="group" aria-label="Filter by review status">
+      <!-- One filter row: who (PAN BS only), then the one refinement that applies to them
+           (review status for members, house for guests), then sort. -->
+      <div v-if="rows.length" class="resp-tools">
+        <div class="resp-filters">
+          <div v-if="takesGuests" class="seg" role="group" aria-label="Show">
+            <button
+              v-for="o in WHO_FILTERS"
+              :key="o.value"
+              type="button"
+              :aria-pressed="whoFilter === o.value"
+              @click="showWho(o.value)"
+            >
+              {{ o.label }} <span class="n">{{ whoCounts[o.value] }}</span>
+            </button>
+          </div>
+          <label v-if="showHouseFilter" class="sort">
+            <span>House</span>
+            <AdminSelect v-model="guestHouse" :options="guestHouses" />
+          </label>
+          <label v-else-if="showReviewFilter" class="sort">
+            <span>Review</span>
+            <AdminSelect v-model="statusFilter" :options="reviewOptions" />
+          </label>
           <button
-            v-for="o in STATUS_FILTERS"
-            :key="o.value"
+            v-if="statusFilter !== 'all' || guestHouse !== 'all'"
             type="button"
-            class="adm-chip"
-            :class="{ on: statusFilter === o.value }"
-            :aria-pressed="statusFilter === o.value"
-            @click="statusFilter = o.value"
+            class="adm-btn ghost small"
+            @click="clearFilter"
           >
-            {{ o.label }} <span class="n">{{ statusCounts[o.value] }}</span>
+            Clear
           </button>
         </div>
         <label class="sort">
@@ -529,9 +553,9 @@
       <p v-if="reviewError" class="adm-msg err" role="alert">{{ reviewError }}</p>
       <p v-if="refreshNotice" class="adm-msg" role="status">{{ refreshNotice }}</p>
       <p v-if="respLoading" class="adm-empty" role="status">Loading responses…</p>
-      <p v-else-if="!responses.length && !respError" class="adm-empty">Nobody has answered yet.</p>
-      <p v-else-if="responses.length && !shownResponses.length" class="adm-empty">
-        No {{ statusFilter }} responses.
+      <p v-else-if="!rows.length && !respError" class="adm-empty">Nobody has answered yet.</p>
+      <p v-else-if="rows.length && !shownResponses.length" class="adm-empty">
+        Nobody matches this filter.
       </p>
       <div v-else-if="shownResponses.length" class="resp-wrap">
         <table class="resp">
@@ -544,13 +568,21 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in shownResponses" :key="r.id">
+            <tr v-for="r in shownResponses" :key="`${r.guestForm ? 'g' : 'm'}:${r.id}`">
               <td class="who">
-                <span class="serial" :title="`Response ${r.serial} in order received`"
+                <span
+                  v-if="!r.guestForm"
+                  class="serial"
+                  :title="`Response ${r.serial} in order received`"
                   >#{{ r.serial }}</span
                 >
                 {{ r.email }}
                 <small v-if="memberName(r)" class="member-name">{{ memberName(r) }}</small>
+                <small v-if="r.guestForm && r.phone" class="member-name">{{ r.phone }}</small>
+                <span v-if="takesGuests" class="kind">
+                  <span v-if="r.kind === 'member'" class="adm-badge mari">Member</span>
+                  <span v-else class="adm-badge">Guest</span>
+                </span>
               </td>
               <td class="when">
                 {{ day(r.submitted_at) }}
@@ -558,7 +590,17 @@
                   >Resent {{ day(r.resubmitted_at) }}</small
                 >
               </td>
-              <td class="review">
+              <td v-if="r.guestForm" class="review">
+                <span class="none">–</span>
+                <p class="by">
+                  {{
+                    r.kind === 'guest'
+                      ? 'Guests are not reviewed.'
+                      : 'Signed up on the event page, so not reviewed.'
+                  }}
+                </p>
+              </td>
+              <td v-else class="review">
                 <span class="adm-badge" :class="STATUS_TONE[r.review_status]">{{
                   REVIEW_LABEL[r.review_status] ?? 'Pending'
                 }}</span>
@@ -644,60 +686,6 @@
           </tbody>
         </table>
       </div>
-
-      <!-- PANBS guests: IITM BS students outside the house, kept apart from member responses. -->
-      <section v-if="guests.length" class="guests" aria-labelledby="guests-h">
-        <div class="resp-bar">
-          <h3 id="guests-h" class="adm-kicker">
-            Guests <span class="n">{{ guests.length }}</span>
-          </h3>
-          <button type="button" class="adm-btn ghost small" @click="downloadGuests">
-            Download guests CSV
-          </button>
-        </div>
-        <div class="adm-chips" role="group" aria-label="Filter guests by house">
-          <button
-            v-for="h in guestHouses"
-            :key="h.value"
-            type="button"
-            class="adm-chip"
-            :class="{ on: guestHouse === h.value }"
-            :aria-pressed="guestHouse === h.value"
-            @click="guestHouse = h.value"
-          >
-            {{ h.label }} <span class="n">{{ h.n }}</span>
-          </button>
-        </div>
-        <div class="resp-wrap">
-          <table class="resp">
-            <thead>
-              <tr>
-                <th scope="col" class="who">Guest</th>
-                <th scope="col">House</th>
-                <th scope="col">Submitted</th>
-                <th v-for="f in guestFields" :key="f.key" scope="col">{{ f.label }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="g in shownGuests" :key="g.id">
-                <td class="who">
-                  {{ g.email }}
-                  <small class="member-name">{{ g.full_name }}</small>
-                  <small v-if="g.phone" class="member-name">{{ g.phone }}</small>
-                </td>
-                <td>
-                  {{ g.house }}
-                  <span v-if="g.is_member" class="adm-badge mari">member</span>
-                  <span v-if="g.in_lounge" class="adm-badge">also in Lounge</span>
-                  <span v-else-if="g.on_roster" class="adm-badge mari">on roster</span>
-                </td>
-                <td class="when">{{ day(g.submitted_at) }}</td>
-                <td v-for="f in guestFields" :key="f.key">{{ guestAnswer(g, f) }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
     </AdminDialog>
 
     <AdminDialog
@@ -783,6 +771,7 @@ import {
   fieldKeyFromLabel,
   formFileLink,
   formResponsesToCsv,
+  mergeRegistrations,
   getFormDriveFolder,
   getAvailableCohorts,
   listEvents,
@@ -839,12 +828,6 @@ const SORT_ORDERS = [
 ];
 const editorId = useId();
 const rejectId = useId();
-const STATUS_FILTERS = [
-  { value: 'all', label: 'All' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'rejected', label: 'Rejected' },
-];
 const STATUS_TONE = { pending: '', approved: 'mari', rejected: 'verm' };
 
 const isHead = computed(
@@ -885,63 +868,46 @@ const eventBoundLock = computed(
 );
 const dlg = ref(null);
 const responsesFor = ref(null);
-// PANBS guests (spec 007): everyone who registered signed out on the public event page.
+// PANBS guests (spec 007): everyone who registered signed out on the public event page. They are
+// listed with the member responses as one list (mergeRegistrations).
 const guests = ref([]);
+const responses = ref([]);
+const rows = computed(() => mergeRegistrations(responses.value, guests.value));
+const takesGuests = computed(
+  () =>
+    guests.value.length > 0 ||
+    !!events.value.find((event) => event.id === responsesFor.value?.event_id)?.panbs
+);
+const WHO_FILTERS = [
+  { value: 'all', label: 'Everyone' },
+  { value: 'member', label: 'Members' },
+  { value: 'guest', label: 'Guests' },
+];
+const whoFilter = ref('all');
+const whoCounts = computed(() => {
+  const counts = { all: rows.value.length, member: 0, guest: 0 };
+  for (const r of rows.value) counts[r.kind] += 1;
+  return counts;
+});
 const guestHouse = ref('all');
 const ROSTER = '\u0000roster';
+const guestRows = computed(() => rows.value.filter((r) => r.kind === 'guest'));
 const guestHouses = computed(() => {
   const n = {};
-  for (const g of guests.value) n[g.house] = (n[g.house] ?? 0) + 1;
-  const roster = guests.value.filter((g) => g.on_roster).length;
+  for (const g of guestRows.value) n[g.house] = (n[g.house] ?? 0) + 1;
+  const roster = guestRows.value.filter((g) => g.on_roster).length;
   return [
-    { value: 'all', label: 'All houses', n: guests.value.length },
-    ...(roster ? [{ value: ROSTER, label: 'On Sundarbans roster', n: roster }] : []),
+    { value: 'all', label: `All houses · ${guestRows.value.length}` },
+    ...(roster ? [{ value: ROSTER, label: `On Sundarbans roster · ${roster}` }] : []),
     ...Object.keys(n)
       .sort()
-      .map((h) => ({ value: h, label: h, n: n[h] })),
+      .map((h) => ({ value: h, label: `${h} · ${n[h]}` })),
   ];
 });
-const shownGuests = computed(() =>
-  guestHouse.value === 'all'
-    ? guests.value
-    : guestHouse.value === ROSTER
-      ? guests.value.filter((g) => g.on_roster)
-      : guests.value.filter((g) => g.house === guestHouse.value)
-);
-// Questions from the newest guest row's schema, minus the fixed name/email/phone columns.
-const guestFields = computed(() =>
-  (guests.value.at(-1)?.field_schema ?? []).filter(
-    (f) => !['name', 'email', 'phone'].includes(f.prefill) && !isHouseRow(f)
-  )
-);
-function guestAnswer(g, f) {
-  const v = g.answers?.[f.key];
-  if (Array.isArray(v)) return v.join('; ') || '–';
-  if (v === true) return 'Yes';
-  if (v === false) return 'No';
-  return v == null || v === '' ? '–' : String(v);
-}
-function downloadGuests() {
-  const columns = [
-    { key: 'email', label: 'Email' },
-    { key: 'full_name', label: 'Name' },
-    { key: 'phone', label: 'Phone' },
-    { key: 'house', label: 'House' },
-    { key: 'member', label: 'Sundarbans member' },
-    { key: 'roster', label: 'On Sundarbans roster' },
-    { key: 'submitted_at', label: 'Submitted' },
-    ...guestFields.value.map((f) => ({ key: `q:${f.key}`, label: f.label })),
-  ];
-  const rows = shownGuests.value.map((g) => ({
-    ...g,
-    member: g.is_member ? 'yes' : 'no',
-    roster: g.on_roster ? 'yes' : 'no',
-    ...Object.fromEntries(guestFields.value.map((f) => [`q:${f.key}`, guestAnswer(g, f)])),
-  }));
-  downloadCsv(`${responsesFor.value.title}-guests.csv`, rows, columns);
-}
-const responses = ref([]);
-const responseFields = computed(() => formResponsesToCsv(responses.value).fields);
+const inHouse = (g) =>
+  guestHouse.value === 'all' ||
+  (guestHouse.value === ROSTER ? g.on_roster : g.house === guestHouse.value);
+const responseFields = computed(() => formResponsesToCsv(rows.value).fields);
 const driveFolder = ref('');
 let responseRun = 0;
 const respError = ref('');
@@ -969,19 +935,48 @@ const viewing = ref(null);
 let fieldN = 0;
 
 const statusOf = (r) => r.review_status ?? 'pending';
-const statusCounts = computed(() => {
-  const counts = { all: responses.value.length, pending: 0, approved: 0, rejected: 0 };
-  for (const r of responses.value) counts[statusOf(r)] += 1;
-  return counts;
+// Only Lounge responses are reviewed, so the review filter shows for members (or a form without
+// guests) and the house filter for guests. Everyone shows no refinement: neither applies to all.
+const whoRows = computed(() =>
+  whoFilter.value === 'all' ? rows.value : rows.value.filter((r) => r.kind === whoFilter.value)
+);
+const showReviewFilter = computed(() => !takesGuests.value || whoFilter.value === 'member');
+const showHouseFilter = computed(() => whoFilter.value === 'guest' && guestHouses.value.length > 2);
+const EVENT_PAGE = 'event-page';
+const reviewOptions = computed(() => {
+  const n = { pending: 0, approved: 0, rejected: 0, [EVENT_PAGE]: 0 };
+  for (const r of whoRows.value) n[r.guestForm ? EVENT_PAGE : statusOf(r)] += 1;
+  // Empty statuses stay listed but disabled, so the list reads the same on every form.
+  const option = (value, label) => ({
+    value,
+    label: `${label} · ${n[value]}`,
+    disabled: !n[value] && statusFilter.value !== value,
+  });
+  return [
+    { value: 'all', label: `Any status · ${whoRows.value.length}` },
+    option('pending', 'Pending'),
+    option('approved', 'Approved'),
+    option('rejected', 'Rejected'),
+    ...(n[EVENT_PAGE] ? [option(EVENT_PAGE, 'Signed up on event page')] : []),
+  ];
 });
+const matchesFilter = (r) => {
+  if (whoFilter.value === 'guest') return inHouse(r);
+  if (statusFilter.value === 'all') return true;
+  if (statusFilter.value === EVENT_PAGE) return r.guestForm;
+  return !r.guestForm && statusOf(r) === statusFilter.value;
+};
+function clearFilter() {
+  statusFilter.value = 'all';
+  guestHouse.value = 'all';
+}
+function showWho(value) {
+  whoFilter.value = value;
+  clearFilter();
+}
 // Serials come from the server and never change with the view.
 const shownResponses = computed(() =>
-  sortResponses(
-    statusFilter.value === 'all'
-      ? responses.value
-      : responses.value.filter((r) => statusOf(r) === statusFilter.value),
-    sortOrder.value
-  )
+  sortResponses(whoRows.value.filter(matchesFilter), sortOrder.value)
 );
 const memberName = (r) => r.member_full_name || r.member_preferred_name || '';
 const reviewedBy = (r) =>
@@ -1673,6 +1668,7 @@ async function openResponses(f) {
       });
   }
   guests.value = [];
+  whoFilter.value = 'all';
   guestHouse.value = 'all';
   reviewError.value = '';
   refreshNotice.value = '';
@@ -1682,7 +1678,11 @@ async function openResponses(f) {
   try {
     const [rows, guestRows] = await Promise.all([
       exportFormResponses(f.id),
-      listFormGuests(f.id).catch(() => []),
+      // A failed guest load must not look like a form nobody registered for as a guest.
+      listFormGuests(f.id).catch((err) => {
+        if (run === responseRun) respError.value = `Couldn't load guests: ${errorText(err)}`;
+        return [];
+      }),
     ]);
     if (run !== responseRun) return;
     responses.value = rows;
@@ -1810,7 +1810,8 @@ async function confirmReject() {
 }
 
 function downloadResponses() {
-  const csv = formResponsesToCsv(responses.value);
+  // Exports the rows the current filters show, in the order they arrived.
+  const csv = formResponsesToCsv(sortResponses(shownResponses.value, 'oldest'));
   downloadCsv(`${responsesFor.value.title}-responses.csv`, csv.rows, csv.columns);
 }
 </script>
@@ -1970,13 +1971,12 @@ function downloadResponses() {
   font-family: var(--mono);
   font-size: 13px;
 }
-.guests {
-  display: grid;
-  gap: 12px;
-  margin-top: 28px;
-}
-.guests h3 .n {
-  color: var(--ink-3);
+.kind {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+  font-family: var(--font);
 }
 .resp-tools {
   display: flex;
@@ -1986,7 +1986,57 @@ function downloadResponses() {
   gap: 10px 16px;
   margin-bottom: 14px;
 }
-.resp-tools .n {
+.resp-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+/* Who is in view: one connected control, so it reads as a single choice, not loose tags. */
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--sunk);
+}
+.seg button {
+  min-block-size: 30px;
+  min-inline-size: 24px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.seg button[aria-pressed='true'] {
+  background: var(--mari);
+  color: var(--on-mari);
+}
+.seg button:focus-visible {
+  outline: 2px solid var(--mari-ink);
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  .seg button[aria-pressed='false']:hover {
+    background: var(--mari-soft);
+    color: var(--ink);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .seg button {
+    transition:
+      background-color 0.2s,
+      color 0.2s;
+  }
+}
+.seg .n {
   margin-left: 4px;
   font-variant-numeric: tabular-nums;
   opacity: 0.75;
