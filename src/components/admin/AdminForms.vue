@@ -715,7 +715,7 @@
       <!-- The live region stays mounted so the toast is announced when it appears. -->
       <div class="add-toast-slot" role="status">
         <div v-if="undoable" :key="undoable.email" class="add-toast">
-          <span>Marked {{ undoable.label }} as added.</span>
+          <span>{{ undoable.label }} marked as added to the group.</span>
           <button
             type="button"
             class="adm-btn ghost small"

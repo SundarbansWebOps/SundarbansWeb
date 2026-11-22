@@ -377,7 +377,7 @@ test('on a group form admins mark who was added, with a short undo', async ({ pa
   });
   const first = dialog.locator('tbody tr', { hasText: '#1' });
   await expect(first.getByText('Added', { exact: true })).toBeVisible();
-  await expect(dialog.getByRole('status')).toContainText('Marked Asha Full as added.');
+  await expect(dialog.getByRole('status')).toContainText('Asha Full marked as added to the group.');
 
   await pick(dialog, 'Group', 'Not added yet · 1');
   await expect(dialog.locator('tbody tr')).toHaveCount(1);
@@ -386,7 +386,7 @@ test('on a group form admins mark who was added, with a short undo', async ({ pa
   await dialog.getByRole('status').getByRole('button', { name: 'Undo' }).click();
   await callTo(calls, '/rest/v1/rpc/undo_form_added');
   await expect(first.getByRole('button', { name: /^Mark .* added to the group$/ })).toBeVisible();
-  await expect(dialog.getByRole('status')).not.toContainText('Marked');
+  await expect(dialog.getByRole('status')).not.toContainText('marked as added');
 
   const downloadPromise = page.waitForEvent('download');
   await dialog.getByRole('button', { name: 'Download CSV' }).click();
