@@ -366,7 +366,7 @@
                 </div>
                 <AdminOptionList v-if="isChoice(field) && !field.fixed" v-model="field.options" />
                 <p v-if="field.fixed === 'house'" class="adm-note wide">
-                  Guests pick from the 12 IITM BS houses.
+                  Guests pick from the 12 IITM BS houses, or “Not allotted yet”.
                 </p>
                 <template v-if="field.type === 'file'">
                   <label class="adm-field">

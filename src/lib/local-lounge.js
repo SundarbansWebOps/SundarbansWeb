@@ -68,6 +68,7 @@ const houses = [
   'Saranda',
   'Sundarbans',
   'Wayanad',
+  'Not allotted yet',
 ];
 const defaults = {
   signedIn: !guest,
