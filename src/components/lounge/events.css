@@ -1163,6 +1163,8 @@
   color: var(--t-1);
   font: inherit;
   font-size: 16px;
+  /* Not the label's 650: at that weight the dot of "i" fuses into the stem and reads as "l". */
+  font-weight: 450;
 }
 :where(html.lounge-active) .ff-multi {
   margin: 0;
