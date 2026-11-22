@@ -1,10 +1,13 @@
-// Prototype: the same reading of "the next event" as NextEventNotice.vue, shared by the desktop
-// corner designs (A/B/C) so all three show the same event, words and action.
+// The Home page's "next event", shared by the slim card under the motto (NextEventNotice, phones
+// and tablets) and the little scroll on the rod (EventScroll, desktop), so both show the same event,
+// words and action.
 import { computed } from 'vue';
-import { fullDate, img, live, panbsRegistered, upcoming } from '../../../lib/events.js';
+import { fullDate, img, live, panbsRegistered, upcoming } from './events.js';
 
-// Anything on air first, then a PAN BS session taking registrations, then the soonest public
-// event. A PAN BS session this browser registered for is skipped unless it is live.
+// One event: anything on air first, then a PAN BS session taking registrations, then the soonest
+// public event of either kind. A PAN BS session this browser already registered for is skipped
+// unless it is live, since then the notice is the way in to join. House events have no per-browser
+// record (they register in the Lounge or on an outside form), so theirs stays until the event starts.
 export const next = computed(() => {
   const open = [...live, ...upcoming].filter(
     (e) => e.stage === 'live' || !(e.panbs && panbsRegistered.includes(e.dbId))
@@ -19,6 +22,8 @@ export const next = computed(() => {
 
 export const isLive = computed(() => next.value?.stage === 'live');
 
+// PAN BS: an open form takes registrations; without one the session is only announced.
+// House events: a sign-up link means Register, otherwise the sheet has the details.
 export const kicker = computed(() => {
   const e = next.value;
   if (isLive.value) return 'Live now';

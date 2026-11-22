@@ -1,5 +1,5 @@
 <!--
-  Desktop corner B: "Little pat". A small scroll — the page's own scroll in miniature — hangs from
+  The Home page's next-event notice on desktop: a small scroll — the page's own scroll in miniature — hangs from
   a peg on the big rod by a looped cord: lotus band, the event poster, headline and guest, the date
   lettered in a cartouche like the motto's, and Register. It unrolls together with the big scroll
   on the same curve; an event that arrives after the intro just fades in. The unroll is a clip and
@@ -47,9 +47,18 @@
 
 <script setup>
 import { ref, watch } from 'vue';
-import CREST from '../../../assets/crest.webp';
-import { openEvent } from '../../../lib/events.js';
-import { countdown, cta, dateParts, kicker, label, next, parts, poster } from './next-event.js';
+import CREST from '../../assets/crest.webp';
+import { openEvent } from '../../lib/events.js';
+import {
+  countdown,
+  cta,
+  dateParts,
+  kicker,
+  label,
+  next,
+  parts,
+  poster,
+} from '../../lib/next-event.js';
 
 const props = defineProps({
   // The big scroll is unrolling right now.
@@ -225,9 +234,9 @@ const open = (ev) => openEvent(next.value.id, ev);
   gap: 9px;
   padding: 0 18px;
   background:
-    url('../../../assets/pat/edge.webp') left top / 8px auto repeat-y,
-    url('../../../assets/pat/edge.webp') right top / 8px auto repeat-y,
-    url('../../../assets/pat/grain.webp') 0 0 / 512px 512px,
+    url('../../assets/pat/edge.webp') left top / 8px auto repeat-y,
+    url('../../assets/pat/edge.webp') right top / 8px auto repeat-y,
+    url('../../assets/pat/grain.webp') 0 0 / 512px 512px,
     var(--pp);
   background-blend-mode: normal, normal, multiply, normal;
   box-shadow: 0 14px 18px color-mix(in srgb, var(--pi) 30%, transparent);
@@ -241,7 +250,7 @@ const open = (ev) => openEvent(next.value.id, ev);
   justify-self: stretch;
   height: 12px;
   margin-inline: -10px;
-  background: url('../../../assets/pat/band.webp') center / auto 100% repeat-x;
+  background: url('../../assets/pat/band.webp') center / auto 100% repeat-x;
 }
 .band:first-child {
   margin-bottom: 4px;
