@@ -1,19 +1,20 @@
 <!--
   Desktop corner B: "Little pat". A small scroll — the page's own scroll in miniature — hangs from
-  a peg on the big rod by a looped cord and unrolls downward once the title settles: lotus band,
-  the event poster, headline and guest, the date lettered in a cartouche like the motto's, and
-  Register. The bottom roll turns as it drops. Hidden at 1020px and below, where the slim
-  invitation under the motto takes over.
+  a peg on the big rod by a looped cord: lotus band, the event poster, headline and guest, the date
+  lettered in a cartouche like the motto's, and Register. It unrolls together with the big scroll
+  on the same curve; an event that arrives after the intro just fades in. The unroll is a clip and
+  a transform (no per-frame layout). Hidden at 1020px and below, where the slim invitation under the
+  motto takes over.
 -->
 <template>
-  <div v-if="next" class="pat-wrap" :class="{ show: ready, drop: ready && !still }">
+  <div v-if="next" class="pat-wrap" :class="still ? null : entry">
     <svg class="cord" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true">
       <path d="M50 3 L7 29 M50 3 L93 29" />
     </svg>
     <span class="peg" aria-hidden="true" />
     <span class="rod" aria-hidden="true" />
 
-    <div class="unroll">
+    <div class="body">
       <article class="sheet" :aria-label="label">
         <span class="band" aria-hidden="true" />
         <p class="kicker mono">
@@ -38,21 +39,34 @@
         </button>
         <span class="band" aria-hidden="true" />
       </article>
+      <!-- Sheet-tall track whose foot holds the roll: sliding it from -100% rides the roll down. -->
+      <div class="track" aria-hidden="true"><span class="roll" /></div>
     </div>
-
-    <span class="roll" aria-hidden="true" />
   </div>
 </template>
 
 <script setup>
+import { ref, watch } from 'vue';
 import CREST from '../../../assets/crest.webp';
 import { openEvent } from '../../../lib/events.js';
 import { countdown, cta, dateParts, kicker, label, next, parts, poster } from './next-event.js';
 
-defineProps({
-  ready: { type: Boolean, default: false },
+const props = defineProps({
+  // The big scroll is unrolling right now.
+  rolling: { type: Boolean, default: false },
+  // No motion: reduced motion, the launch film's composed arrival, or the intro was skipped.
   still: { type: Boolean, default: false },
 });
+
+// Decided once, when the event first appears: unroll alongside the big scroll, or fade in late.
+const entry = ref('');
+watch(
+  () => !!next.value,
+  (has) => {
+    if (has && !entry.value) entry.value = props.rolling ? 'unroll' : 'fade';
+  },
+  { immediate: true }
+);
 
 const open = (ev) => openEvent(next.value.id, ev);
 </script>
@@ -64,23 +78,20 @@ const open = (ev) => openEvent(next.value.id, ev);
   position: absolute;
   z-index: 5;
   top: calc(var(--rod-h) - 8px);
-  right: calc(var(--edge-w) + clamp(28px, 4.4vw, 88px));
+  right: calc(var(--edge-w) + clamp(14px, 1.8vw, 36px));
   width: clamp(196px, 15vw, 246px);
-  opacity: 0;
-  visibility: hidden;
-  filter: drop-shadow(0 14px 18px color-mix(in srgb, var(--pi) 32%, transparent));
+  /* The big scroll's unroll curve (HomePage .rolling .scroll), shorter: the small one opens first. */
+  --open: 1.1s cubic-bezier(0.55, 0.02, 0.25, 1);
 }
-.pat-wrap.show {
-  opacity: 1;
-  visibility: visible;
+.fade {
+  animation: arrive 0.3s var(--ease-out) both;
 }
-.pat-wrap.drop {
-  animation: arrive 0.45s var(--ease-out) both;
+.unroll {
+  animation: arrive 0.2s linear both;
 }
 @keyframes arrive {
   from {
     opacity: 0;
-    transform: translateY(-16px);
   }
 }
 
@@ -154,10 +165,27 @@ const open = (ev) => openEvent(next.value.id, ev);
 .roll::after {
   right: -6px;
 }
-/* The bottom roll: wound paper whose turning lines slide while it unrolls. */
+/* The bottom roll: wound paper, riding the foot of the sheet. */
+.track {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.unroll .track {
+  animation: ride var(--open) backwards;
+}
+@keyframes ride {
+  from {
+    transform: translateY(-100%);
+  }
+}
 .roll {
+  position: absolute;
+  top: calc(100% - 2px);
+  left: 0;
+  right: 0;
   height: 20px;
-  margin-top: -2px;
+  box-shadow: 0 8px 12px -4px color-mix(in srgb, var(--pi) 40%, transparent);
   background:
     linear-gradient(
       color-mix(in srgb, var(--pi) 45%, transparent),
@@ -174,41 +202,24 @@ const open = (ev) => openEvent(next.value.id, ev);
       0 0 / 100% 8px,
     var(--pp);
 }
-.drop .roll {
-  animation: spin 1.15s 0.4s cubic-bezier(0.55, 0.02, 0.25, 1) both;
+/* The sheet is revealed top-down by a clip that matches the roll's ride; its shadow sits outside
+   the box, so the clip opens past the sides and foot. */
+.body {
+  position: relative;
 }
-@keyframes spin {
+.unroll .sheet {
+  animation: reveal var(--open) backwards;
+}
+@keyframes reveal {
   from {
-    background-position:
-      0 0,
-      0 0,
-      0 0;
+    clip-path: inset(0 -32px 100% -32px);
   }
   to {
-    background-position:
-      0 0,
-      0 64px,
-      0 0;
-  }
-}
-
-/* The sheet opens from zero height to its own: the roll below rides down with it. */
-.unroll {
-  display: grid;
-  grid-template-rows: 1fr;
-}
-.drop .unroll {
-  animation: open 1.15s 0.4s cubic-bezier(0.55, 0.02, 0.25, 1) both;
-}
-@keyframes open {
-  from {
-    grid-template-rows: 0fr;
+    clip-path: inset(0 -32px -40px -32px);
   }
 }
 
 .sheet {
-  min-height: 0;
-  overflow: hidden;
   display: grid;
   justify-items: center;
   gap: 9px;
@@ -219,6 +230,7 @@ const open = (ev) => openEvent(next.value.id, ev);
     url('../../../assets/pat/grain.webp') 0 0 / 512px 512px,
     var(--pp);
   background-blend-mode: normal, normal, multiply, normal;
+  box-shadow: 0 14px 18px color-mix(in srgb, var(--pi) 30%, transparent);
   color: var(--pi);
   text-align: center;
 }

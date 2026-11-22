@@ -1,11 +1,11 @@
 <!--
   Desktop corner A: "Poster tag". A tag tied to the scroll rod on a single string hangs over the
   right-hand mangrove: the poster (with a countdown stamp), the headline and guest, the date, and a
-  Register foot. It drops and sways once after the title settles. Hidden at 1020px and below,
+  Register foot. It drops and sways once as soon as the event is known, alongside the scroll's unroll. Hidden at 1020px and below,
   where the slim invitation under the motto takes over.
 -->
 <template>
-  <div v-if="next" class="tag-wrap" :class="{ show: ready, drop: ready && !still }">
+  <div v-if="next" class="tag-wrap" :class="{ drop: !still }">
     <span class="knot" aria-hidden="true" />
     <span class="string" aria-hidden="true" />
     <article class="tag" :aria-label="label">
@@ -37,7 +37,6 @@ import { openEvent } from '../../../lib/events.js';
 import { countdown, cta, dateParts, kicker, label, next, parts, poster } from './next-event.js';
 
 defineProps({
-  ready: { type: Boolean, default: false },
   still: { type: Boolean, default: false },
 });
 
@@ -50,15 +49,9 @@ const open = (ev) => openEvent(next.value.id, ev);
   position: absolute;
   z-index: 5;
   top: calc(var(--rod-h) - 6px);
-  right: calc(var(--edge-w) + clamp(24px, 4.2vw, 84px));
+  right: calc(var(--edge-w) + clamp(12px, 1.8vw, 36px));
   width: clamp(184px, 14.5vw, 236px);
   transform-origin: 50% 0;
-  opacity: 0;
-  visibility: hidden;
-}
-.tag-wrap.show {
-  opacity: 1;
-  visibility: visible;
 }
 .tag-wrap.drop {
   animation: hang 1.9s var(--ease-out) both;

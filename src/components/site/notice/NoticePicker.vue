@@ -1,4 +1,4 @@
-<!-- Prototype-only switcher: flips the desktop Home notice between the shipped card and corner designs A/B/C via ?v=. -->
+<!-- Prototype-only switcher: flips the desktop Home notice between the shipped card and corner designs A/B via ?v=. -->
 <template>
   <nav class="picker" aria-label="Notice prototype">
     <span class="mono">Notice</span>
@@ -18,7 +18,6 @@ const OPTIONS = [
   { v: 'now', label: 'Current' },
   { v: 'a', label: 'A · Poster tag' },
   { v: 'b', label: 'B · Little pat' },
-  { v: 'c', label: 'C · Garland' },
 ];
 </script>
 
