@@ -165,10 +165,11 @@ export function formUnavailableMessage(form, regionId, cohort) {
   return 'This form is not accepting responses right now.';
 }
 
-export async function listGroups(forms = null, regionId = null, showJoined = false) {
-  // Joined groups leave the Lounge (nothing is left to do) unless the student switched them back on.
+// Every group the student applied to, joined ones included: the Lounge hides those (`joined`)
+// unless the student switched them back on, so the switch never needs a refetch.
+export async function listGroups(forms = null, regionId = null) {
   const submitted = groupFormsForMember(forms ?? (await listForms()), regionId).filter(
-    (form) => form.submitted && (showJoined || !isJoined(form))
+    (form) => form.submitted
   );
   return Promise.all(
     submitted.map(async (form) => {

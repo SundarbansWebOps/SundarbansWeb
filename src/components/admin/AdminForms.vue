@@ -635,7 +635,8 @@
                 <p v-if="r.review_status !== 'pending' && reviewedBy(r)" class="by">
                   {{ reviewedBy(r) }}
                 </p>
-                <div class="adm-chips actions">
+                <!-- Without the add list it is unknown whether this form is reviewed at all. -->
+                <div v-if="!addsFailed" class="adm-chips actions">
                   <button
                     v-if="r.review_status !== 'approved'"
                     type="button"
@@ -919,6 +920,7 @@ const responses = ref([]);
 // "Added to group" (forms that hand out a WhatsApp invite): admins tick people off instead of
 // reviewing them. `adds` maps a normalised email to its mark; each row carries its mark as `added`.
 const tracksAdds = ref(false);
+const addsFailed = ref(false);
 const adds = ref(new Map());
 const rows = computed(() => {
   const list = mergeRegistrations(responses.value, guests.value);
@@ -1759,6 +1761,7 @@ async function openResponses(f) {
   }
   guests.value = [];
   tracksAdds.value = false;
+  addsFailed.value = false;
   adds.value = new Map();
   addedFilter.value = 'all';
   dropUndo();
@@ -1778,8 +1781,10 @@ async function openResponses(f) {
         return [];
       }),
       listFormAdds(f.id).catch((err) => {
-        if (run === responseRun)
+        if (run === responseRun) {
           respError.value = `Couldn't load who has been added: ${errorText(err)}`;
+          addsFailed.value = true;
+        }
         return { tracks: false, adds: [] };
       }),
     ]);
@@ -1931,9 +1936,10 @@ async function markAdded(r) {
   reviewError.value = '';
   try {
     const mark = await markFormAdded(formId, email);
-    if (run !== responseRun) return;
+    // Still applied if the dialog was reopened on the same form meanwhile.
+    if (responsesFor.value?.id !== formId) return;
     setAdd(email, mark);
-    if (mark?.created) {
+    if (mark?.created && run === responseRun) {
       dropUndo();
       undoable.value = { formId, email, run, label: memberName(r) || r.email, busy: false };
       undoTimer = setTimeout(dropUndo, ADD_UNDO_MS);
@@ -1951,7 +1957,7 @@ async function undoAdd() {
   clearTimeout(undoTimer);
   try {
     await undoFormAdded(u.formId, u.email);
-    if (u.run === responseRun) setAdd(u.email, null);
+    if (responsesFor.value?.id === u.formId) setAdd(u.email, null);
   } catch (e) {
     if (u.run === responseRun) reviewError.value = errorText(e);
   } finally {

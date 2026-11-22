@@ -164,6 +164,8 @@ const shown = ref(false);
 const boats = computed(() => {
   const rejected = (g) => g.review_status === 'rejected';
   const joined = lounge.groups
+    // Groups the student is already in stay away unless "Show groups I'm in" is on.
+    .filter((g) => member.joined_groups_shown || !g.joined)
     // Hidden ("I've joined all my groups") keeps only what the student can still fix.
     .filter((g) => !member.group_forms_hidden || isSuperAdmin.value || (rejected(g) && g.fixable))
     .map((g) => ({

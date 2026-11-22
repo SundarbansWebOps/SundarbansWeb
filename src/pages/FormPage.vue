@@ -66,15 +66,19 @@
         </p>
         <p v-if="uploadsBusy" class="msg" role="status">Finish the uploads to continue.</p>
         <p v-if="error" class="msg err" role="alert">{{ error }}</p>
-        <p v-if="invite" class="next" role="status">
+        <p v-if="invite && addState !== 'added'" class="next" role="status">
           <strong>Saved. One step left.</strong>
           Open the invite and request to join. An admin adds you after checking.
         </p>
-        <p v-else-if="locked && inviteError" class="msg err" role="alert">
+        <p v-else-if="locked && inviteError && addState !== 'added'" class="msg err" role="alert">
           {{ inviteError }}
           <button class="text-action" type="button" @click="loadInvite">Try again</button>
         </p>
-        <p v-else-if="locked && form.form_kind === 'group'" class="msg" role="status">
+        <p
+          v-else-if="locked && form.form_kind === 'group' && addState !== 'added'"
+          class="msg"
+          role="status"
+        >
           No invite link is available for this group yet. Your application remains saved; an
           application does not confirm admission.
         </p>

@@ -133,10 +133,13 @@ async function loadRegions() {
 // the old value, so it re-applies the saved one instead of putting the old one back.
 let hiddenSaves = 0;
 let savedHidden = false;
+let joinedSaves = 0;
+let savedJoined = false;
 
 export async function hydrateLounge() {
   const generation = ++hydrateGeneration;
   const savesAtStart = hiddenSaves;
+  const joinedAtStart = joinedSaves;
   const requestedUid = auth.session?.user?.id ?? auth.profile?.id ?? null;
   lounge.error = '';
   const data = await loadLounge();
@@ -154,6 +157,10 @@ export async function hydrateLounge() {
       member.group_forms_hidden = savedHidden;
       auth.profile.group_forms_hidden = savedHidden;
     }
+    if (joinedSaves !== joinedAtStart) {
+      member.joined_groups_shown = savedJoined;
+      auth.profile.joined_groups_shown = savedJoined;
+    }
   }
   lounge.events = asList(data.events);
   lounge.forms = asList(data.forms);
@@ -161,7 +168,7 @@ export async function hydrateLounge() {
   lounge.certificates = asList(data.certificates);
   lounge.regionRequests = asList(data.regionRequests);
   const [groups, regions] = await Promise.all([
-    listGroups(lounge.forms, member.region_id, member.joined_groups_shown),
+    listGroups(lounge.forms, member.region_id),
     loadRegions().catch(() => []),
   ]);
   if (
@@ -225,14 +232,13 @@ export async function saveGroupFormsHidden(hidden) {
   return saved;
 }
 
-// "Show groups I'm in": brings joined groups (added or approved) back to the Lounge. The group list
-// is rebuilt here because joined groups are left out of it, invites and all, while hidden.
+// "Show groups I'm in": brings joined groups (added or approved) back to the Lounge.
 export async function saveJoinedGroupsShown(shown) {
   const saved = !!(await persistJoinedGroupsShown(shown));
+  joinedSaves++;
+  savedJoined = saved;
   member.joined_groups_shown = saved;
   if (auth.profile) auth.profile.joined_groups_shown = saved;
-  const groups = await listGroups(lounge.forms, member.region_id, saved);
-  if (member.joined_groups_shown === saved) lounge.groups = asList(groups);
   return saved;
 }
 

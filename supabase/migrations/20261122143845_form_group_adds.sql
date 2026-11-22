@@ -6,6 +6,8 @@
 -- One mark per form + email, whichever way the person signed up (Lounge response or PAN BS event
 -- page), so a guest who later registers in the Lounge keeps it. A mark is permanent: only the admin
 -- who made it can undo it, and only right away (the admin UI offers Undo for 10 seconds).
+-- An approved response counts as added too: on these forms approval only ever meant that, and it
+-- keeps forms that gain an invite after approving people consistent without a copy step.
 
 create table public.form_group_adds (
   form_id uuid not null references public.lounge_forms(id) on delete cascade,
@@ -39,8 +41,9 @@ as $$
   );
 $$;
 
--- Whether the signed-in member is marked added on this form, by their account email or the email
--- their response was sent with.
+-- Whether the signed-in member is in this form's group: marked by their account email or the
+-- email their response was sent with, or approved. False on forms that do not track adds, so a
+-- form that later starts adding to a community goes back to its real review.
 create function private.added_to_group(p_form_id uuid)
 returns boolean
 language sql
@@ -48,15 +51,21 @@ stable
 security definer
 set search_path = ''
 as $$
-  select exists (
-    select 1 from public.form_group_adds a
-     where a.form_id = p_form_id
-       and a.email in (
-         select lower(btrim(m.email)) from public.members m where m.id = auth.uid()
-         union
-         select lower(btrim(r.submitted_email)) from public.form_responses r
-          where r.form_id = p_form_id and r.member_id = auth.uid()
-       )
+  select private.tracks_group_adds(p_form_id) and (
+    exists (
+      select 1 from public.form_group_adds a
+       where a.form_id = p_form_id
+         and a.email in (
+           select lower(btrim(m.email)) from public.members m where m.id = auth.uid()
+           union
+           select lower(btrim(r.submitted_email)) from public.form_responses r
+            where r.form_id = p_form_id and r.member_id = auth.uid()
+         )
+    )
+    or exists (
+      select 1 from public.form_responses r
+       where r.form_id = p_form_id and r.member_id = auth.uid() and r.review_status = 'approved'
+    )
   );
 $$;
 
@@ -78,9 +87,22 @@ begin
         'email', a.email, 'added_at', a.added_at, 'added_by', a.added_by,
         'added_by_name', coalesce(nullif(m.preferred_name, ''), m.full_name)
       ) order by a.added_at)
-      from public.form_group_adds a
+      from (
+        select distinct on (x.email) x.email, x.added_at, x.added_by
+          from (
+            select g.email, g.added_at, g.added_by, 0 as rank
+              from public.form_group_adds g where g.form_id = p_form_id
+            union all
+            select lower(btrim(r.submitted_email)), coalesce(r.reviewed_at, r.submitted_at),
+                   r.reviewed_by, 1
+              from public.form_responses r
+             where r.form_id = p_form_id and r.review_status = 'approved'
+               and coalesce(btrim(r.submitted_email), '') <> ''
+          ) x
+         order by x.email, x.rank
+      ) a
       left join public.members m on m.id = a.added_by
-      where a.form_id = p_form_id
+      where private.tracks_group_adds(p_form_id)
     ), '[]'::jsonb)
   );
 end;
@@ -114,18 +136,28 @@ begin
     raise exception 'Nobody registered on this form with that email' using errcode = '22023';
   end if;
 
-  insert into public.form_group_adds (form_id, email, added_by)
-  values (p_form_id, v_email, auth.uid())
-  on conflict (form_id, email) do nothing
-  returning * into v_row;
-
-  if found then
-    v_created := true;
-    perform private.write_audit('form.added', 'lounge_forms', p_form_id::text, null,
-      jsonb_build_object('email', v_email));
-  else
+  -- Loops only if another admin's mark is undone between our conflict and our read.
+  loop
+    insert into public.form_group_adds (form_id, email, added_by)
+    values (p_form_id, v_email, auth.uid())
+    on conflict (form_id, email) do nothing
+    returning * into v_row;
+    if found then
+      v_created := true;
+      perform private.write_audit('form.added', 'lounge_forms', p_form_id::text, null,
+        jsonb_build_object('email', v_email));
+      exit;
+    end if;
     select * into v_row from public.form_group_adds where form_id = p_form_id and email = v_email;
-  end if;
+    exit when found;
+  end loop;
+
+  -- Being added settles it: an earlier rejection no longer stands, so the student stops being
+  -- told to fix the form.
+  update public.form_responses
+     set review_status = 'pending', review_reason = null, reviewed_by = null, reviewed_at = null
+   where form_id = p_form_id and lower(btrim(submitted_email)) = v_email
+     and review_status = 'rejected';
 
   return jsonb_build_object(
     'email', v_row.email, 'added_at', v_row.added_at, 'added_by', v_row.added_by,
@@ -203,15 +235,6 @@ grant execute on function public.mark_form_added(uuid, text) to authenticated;
 grant execute on function public.undo_form_added(uuid, text) to authenticated;
 grant execute on function public.set_joined_groups_shown(boolean) to authenticated;
 
--- On these forms an approval has only ever meant "added to the WhatsApp group".
-insert into public.form_group_adds (form_id, email, added_by, added_at)
-select r.form_id, lower(btrim(r.submitted_email)), r.reviewed_by, coalesce(r.reviewed_at, now())
-  from public.form_responses r
- where r.review_status = 'approved'
-   and coalesce(btrim(r.submitted_email), '') <> ''
-   and private.tracks_group_adds(r.form_id)
-on conflict (form_id, email) do nothing;
-
 -- The Lounge needs to know, per form, whether it is tracked and whether the student is in.
 create or replace function pg_temp.patch_once(p_body text, p_anchor text, p_new text) returns text
 language plpgsql as $$
@@ -227,5 +250,29 @@ declare b text := pg_get_functiondef('public.list_lounge_forms()'::regprocedure)
 begin
  b := pg_temp.patch_once(b, $a$'review_status',(select r.review_status$a$,
   $a$'tracks_adds',private.tracks_group_adds(f.id),'added',private.added_to_group(f.id),'review_status',(select r.review_status$a$);
+ execute b;
+end $patch$;
+
+-- Hard delete scrubs the member's emails; marks are keyed by email, so they move to the same
+-- placeholder (the response keeps showing as added, and the old address is gone).
+do $patch$
+declare b text := pg_get_functiondef('public.svc_execute_hard_delete'::regproc);
+begin
+ b := pg_temp.patch_once(b, $a$perform set_config('app.suppress_row_audit', 'on', true);$a$,
+  $a$perform set_config('app.suppress_row_audit', 'on', true);
+
+  insert into public.form_group_adds (form_id, email, added_by, added_at)
+  select a.form_id, 'deleted-' || v_member.id::text || '@deleted.invalid',
+         (array_agg(a.added_by order by a.added_at))[1], min(a.added_at)
+    from public.form_group_adds a
+   where a.email = lower(btrim(v_member.email))
+      or a.email in (select lower(btrim(r.submitted_email)) from public.form_responses r
+                      where r.member_id = v_member.id and r.form_id = a.form_id)
+   group by a.form_id
+  on conflict (form_id, email) do nothing;
+  delete from public.form_group_adds a
+   where a.email = lower(btrim(v_member.email))
+      or a.email in (select lower(btrim(r.submitted_email)) from public.form_responses r
+                      where r.member_id = v_member.id and r.form_id = a.form_id);$a$);
  execute b;
 end $patch$;
