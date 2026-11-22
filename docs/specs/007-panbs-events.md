@@ -25,7 +25,7 @@ the event page without signing in.
 | Anyone else | Register on the event → form opens on the event page | `submit_panbs_registration` (callable without sign-in) |
 
 The public form has fixed fields first — **Name**, **Student email**, **Your house** (the 12 IITM BS
-houses), **Phone** (optional) — then the form's own fields. Form fields that prefill name, email or
+houses, plus **Not allotted yet** for students without a house), **Phone** (optional) — then the form's own fields. Form fields that prefill name, email or
 phone are filled from the fixed fields and not asked twice.
 
 **Email rule:** must end in `study.iitm.ac.in` (`ds.`, `es.`, `mg.`, `ae.` … subdomains included).

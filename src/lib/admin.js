@@ -82,6 +82,7 @@ export const IITM_HOUSES = [
   'Saranda',
   'Sundarbans',
   'Wayanad',
+  'Not allotted yet',
 ];
 export const MEET_ELIGIBLE_SECONDS = 1200;
 export const TEMPLATE_MAX_BYTES = 10485760;
