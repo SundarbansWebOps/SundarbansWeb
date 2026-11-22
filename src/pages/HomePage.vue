@@ -19,6 +19,8 @@
   >
     <div ref="scrollEl" class="scroll" @animationend.self="unrolled">
       <div class="rod" aria-hidden="true" />
+      <!-- Desktop: the next event hangs from the rod and unrolls with the scroll. -->
+      <EventScroll :rolling="rolling" :still="instant || RM" />
 
       <div class="paper">
         <!-- ============ Title panel ============ -->
@@ -93,7 +95,7 @@
               </p>
               <p class="line">एकत्र उदयामः, सहैव प्रज्वलामः।</p>
             </div>
-            <NextEventNotice :ready="settled" :still="RM" />
+            <NextEventNotice class="narrow-only" :ready="settled" :still="RM" />
           </div>
           <div class="band" aria-hidden="true" />
         </section>
@@ -305,6 +307,7 @@
 import CREST from '../assets/crest.webp';
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { takeLaunchCut } from '../lib/launch.js';
+import EventScroll from '../components/site/EventScroll.vue';
 import EventSheet from '../components/site/EventSheet.vue';
 import LineIcon from '../components/site/LineIcon.vue';
 import NextEventNotice from '../components/site/NextEventNotice.vue';
@@ -1123,6 +1126,15 @@ img.forest.ink {
   text-align: center;
   /* Keeps the stacking context the drifting transform used to create for the title. */
   isolation: isolate;
+}
+/* The card under the motto is for phones and tablets; desktop has EventScroll on the rod. */
+.title > .narrow-only {
+  display: none;
+}
+@media (max-width: 1020px) {
+  .title > .narrow-only {
+    display: grid;
+  }
 }
 .drift {
   display: grid;

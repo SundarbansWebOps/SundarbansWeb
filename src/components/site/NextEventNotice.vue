@@ -1,6 +1,7 @@
 <!--
-  The Home page's notice for the next public event (a PAN BS session or a House event): a slim painted invitation set into the title
-  panel under the motto, kept to one row so the boat and tiger below stay clear. The event poster
+  The Home page's notice for the next public event (a PAN BS session or a House event) on phones and
+  tablets (desktop hangs EventScroll from the rod instead): a slim painted invitation set into the
+  title panel under the motto, kept to one row so the boat and tiger below stay clear. The event poster
   (tilted, overhanging the card; the house crest when there is none) shows the guest; status,
   countdown, headline and guest sit beside it, then the date and Register. Lotus corners are drawn
   in SVG to match the scroll's borders. It unfurls once after the title settles.
@@ -48,96 +49,23 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
 import CREST from '../../assets/crest.webp';
-import { fullDate, img, live, openEvent, panbsRegistered, upcoming } from '../../lib/events.js';
+import { openEvent } from '../../lib/events.js';
+import {
+  countdown,
+  cta,
+  dateParts,
+  kicker,
+  next,
+  parts,
+  poster,
+  when,
+} from '../../lib/next-event.js';
 
 defineProps({
   ready: { type: Boolean, default: false },
   still: { type: Boolean, default: false },
 });
-
-// One card, one event: anything on air first, then a PAN BS session taking registrations, then
-// the soonest public event of either kind. A PAN BS session this browser already registered for
-// is skipped unless it is live, since then the card is the way in to join. House events have no
-// per-browser record (they register in the Lounge or on an outside form), so theirs stays until
-// the event starts.
-const next = computed(() => {
-  const open = [...live, ...upcoming].filter(
-    (e) => e.stage === 'live' || !(e.panbs && panbsRegistered.includes(e.dbId))
-  );
-  return (
-    open.find((e) => e.stage === 'live') ??
-    open.find((e) => e.panbs && e.registers) ??
-    open[0] ??
-    null
-  );
-});
-
-const isLive = computed(() => next.value?.stage === 'live');
-
-// PAN BS: an open form takes registrations; without one the session is only announced.
-// House events: a sign-up link means Register, otherwise the sheet has the details.
-const kicker = computed(() => {
-  const e = next.value;
-  if (isLive.value) return 'Live now';
-  if (!e?.panbs) return 'House event';
-  return e.registers ? 'Registrations open' : 'Upcoming session';
-});
-
-const cta = computed(() => {
-  const e = next.value;
-  if (isLive.value) return 'Join now';
-  if (e?.panbs ? e.registers : e?.link) return 'Register';
-  return 'See details';
-});
-
-const when = computed(() => {
-  const e = next.value;
-  if (!e?.at) return '';
-  return [fullDate(e), e.time].filter(Boolean).join(' · ');
-});
-
-// Date pieces in IST, e.g. { day: '23', month: 'Nov', weekday: 'Mon' }.
-const dateParts = computed(() => {
-  const at = next.value?.at;
-  if (!at) return null;
-  const f = (o) => new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', ...o }).format(at);
-  return {
-    day: f({ day: 'numeric' }),
-    month: f({ month: 'short' }),
-    weekday: f({ weekday: 'short' }),
-  };
-});
-
-// Whole IST days until the start: 0 today, 1 tomorrow.
-const daysLeft = computed(() => {
-  const at = next.value?.at;
-  if (!at || isLive.value) return null;
-  const ist = (d) => new Date(d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }));
-  const n = Math.round((ist(at) - ist(new Date())) / 864e5);
-  return n >= 0 ? n : null;
-});
-
-const countdown = computed(() => {
-  const n = daysLeft.value;
-  if (isLive.value) return 'On air now';
-  if (n == null) return '';
-  if (n === 0) return 'Today';
-  if (n === 1) return 'Tomorrow';
-  return `In ${n} days`;
-});
-
-// Series titles read "<series> presents <headline> with <guest>"; the card leads with the
-// headline and highlights the guest. Titles without that shape show whole.
-const parts = computed(() => {
-  const t = next.value?.title ?? '';
-  const rest = t.match(/^.*?\s+presents\s+(.*)$/i)?.[1] ?? t;
-  const g = rest.match(/^(.*?)\s+with\s+(.*)$/i);
-  return { headline: g ? g[1] : rest, guest: g ? g[2] : '' };
-});
-
-const poster = computed(() => img.card(next.value?.image) ?? null);
 
 const open = (ev) => openEvent(next.value.id, ev);
 </script>
