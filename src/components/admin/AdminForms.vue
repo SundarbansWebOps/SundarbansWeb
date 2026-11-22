@@ -490,8 +490,16 @@
         </a>
         <p class="adm-note" aria-live="polite">
           <template v-if="!respLoading && !respError">
-            <b>{{ responses.length }}</b>
-            {{ responses.length === 1 ? 'response' : 'responses' }}
+            <template v-if="takesGuests">
+              <b>{{ rows.length }}</b>
+              {{ rows.length === 1 ? 'registration' : 'registrations' }}
+              · {{ whoCounts.member }} {{ whoCounts.member === 1 ? 'member' : 'members' }} ·
+              {{ whoCounts.guest }} {{ whoCounts.guest === 1 ? 'guest' : 'guests' }}
+            </template>
+            <template v-else>
+              <b>{{ rows.length }}</b>
+              {{ rows.length === 1 ? 'response' : 'responses' }}
+            </template>
             · {{ responseFields.length }}
             {{ responseFields.length === 1 ? 'question' : 'questions' }}
             <span class="resp-scope"> · {{ scopeOf(responsesFor) }}</span>
@@ -500,14 +508,47 @@
         <button
           type="button"
           class="adm-btn ghost small"
-          :disabled="respLoading || !responses.length"
+          :disabled="respLoading || !shownResponses.length"
           @click="downloadResponses"
         >
           Download CSV
         </button>
       </div>
-      <div v-if="responses.length" class="resp-tools">
-        <div class="adm-chips" role="group" aria-label="Filter by review status">
+      <div v-if="rows.length && takesGuests" class="resp-tools">
+        <div class="adm-chips" role="group" aria-label="Filter members and guests">
+          <button
+            v-for="o in WHO_FILTERS"
+            :key="o.value"
+            type="button"
+            class="adm-chip"
+            :class="{ on: whoFilter === o.value }"
+            :aria-pressed="whoFilter === o.value"
+            @click="whoFilter = o.value"
+          >
+            {{ o.label }} <span class="n">{{ whoCounts[o.value] }}</span>
+          </button>
+        </div>
+      </div>
+      <div v-if="rows.length" class="resp-tools">
+        <div
+          v-if="whoFilter === 'guest'"
+          class="adm-chips"
+          role="group"
+          aria-label="Filter guests by house"
+        >
+          <button
+            v-for="h in guestHouses"
+            :key="h.value"
+            type="button"
+            class="adm-chip"
+            :class="{ on: guestHouse === h.value }"
+            :aria-pressed="guestHouse === h.value"
+            @click="guestHouse = h.value"
+          >
+            {{ h.label }} <span class="n">{{ h.n }}</span>
+          </button>
+        </div>
+        <div v-else class="adm-chips" role="group" aria-label="Filter by review status">
           <button
             v-for="o in STATUS_FILTERS"
             :key="o.value"
@@ -529,9 +570,9 @@
       <p v-if="reviewError" class="adm-msg err" role="alert">{{ reviewError }}</p>
       <p v-if="refreshNotice" class="adm-msg" role="status">{{ refreshNotice }}</p>
       <p v-if="respLoading" class="adm-empty" role="status">Loading responses…</p>
-      <p v-else-if="!responses.length && !respError" class="adm-empty">Nobody has answered yet.</p>
-      <p v-else-if="responses.length && !shownResponses.length" class="adm-empty">
-        No {{ statusFilter }} responses.
+      <p v-else-if="!rows.length && !respError" class="adm-empty">Nobody has answered yet.</p>
+      <p v-else-if="rows.length && !shownResponses.length" class="adm-empty">
+        Nobody matches this filter.
       </p>
       <div v-else-if="shownResponses.length" class="resp-wrap">
         <table class="resp">
@@ -544,13 +585,27 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in shownResponses" :key="r.id">
+            <tr v-for="r in shownResponses" :key="`${r.kind}:${r.id}`">
               <td class="who">
-                <span class="serial" :title="`Response ${r.serial} in order received`"
+                <span
+                  v-if="r.kind === 'member'"
+                  class="serial"
+                  :title="`Response ${r.serial} in order received`"
                   >#{{ r.serial }}</span
                 >
                 {{ r.email }}
                 <small v-if="memberName(r)" class="member-name">{{ memberName(r) }}</small>
+                <small v-if="r.kind === 'guest' && r.phone" class="member-name">{{
+                  r.phone
+                }}</small>
+                <span v-if="takesGuests" class="kind">
+                  <span v-if="r.kind === 'member'" class="adm-badge mari">Member</span>
+                  <template v-else>
+                    <span class="adm-badge">Guest · {{ r.house }}</span>
+                    <span v-if="r.is_member" class="adm-badge mari">Sundarbans member</span>
+                    <span v-else-if="r.on_roster" class="adm-badge mari">On roster</span>
+                  </template>
+                </span>
               </td>
               <td class="when">
                 {{ day(r.submitted_at) }}
@@ -558,7 +613,11 @@
                   >Resent {{ day(r.resubmitted_at) }}</small
                 >
               </td>
-              <td class="review">
+              <td v-if="r.kind === 'guest'" class="review">
+                <span class="none">–</span>
+                <p class="by">Guests are not reviewed.</p>
+              </td>
+              <td v-else class="review">
                 <span class="adm-badge" :class="STATUS_TONE[r.review_status]">{{
                   REVIEW_LABEL[r.review_status] ?? 'Pending'
                 }}</span>
@@ -644,60 +703,6 @@
           </tbody>
         </table>
       </div>
-
-      <!-- PANBS guests: IITM BS students outside the house, kept apart from member responses. -->
-      <section v-if="guests.length" class="guests" aria-labelledby="guests-h">
-        <div class="resp-bar">
-          <h3 id="guests-h" class="adm-kicker">
-            Guests <span class="n">{{ guests.length }}</span>
-          </h3>
-          <button type="button" class="adm-btn ghost small" @click="downloadGuests">
-            Download guests CSV
-          </button>
-        </div>
-        <div class="adm-chips" role="group" aria-label="Filter guests by house">
-          <button
-            v-for="h in guestHouses"
-            :key="h.value"
-            type="button"
-            class="adm-chip"
-            :class="{ on: guestHouse === h.value }"
-            :aria-pressed="guestHouse === h.value"
-            @click="guestHouse = h.value"
-          >
-            {{ h.label }} <span class="n">{{ h.n }}</span>
-          </button>
-        </div>
-        <div class="resp-wrap">
-          <table class="resp">
-            <thead>
-              <tr>
-                <th scope="col" class="who">Guest</th>
-                <th scope="col">House</th>
-                <th scope="col">Submitted</th>
-                <th v-for="f in guestFields" :key="f.key" scope="col">{{ f.label }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="g in shownGuests" :key="g.id">
-                <td class="who">
-                  {{ g.email }}
-                  <small class="member-name">{{ g.full_name }}</small>
-                  <small v-if="g.phone" class="member-name">{{ g.phone }}</small>
-                </td>
-                <td>
-                  {{ g.house }}
-                  <span v-if="g.is_member" class="adm-badge mari">member</span>
-                  <span v-if="g.in_lounge" class="adm-badge">also in Lounge</span>
-                  <span v-else-if="g.on_roster" class="adm-badge mari">on roster</span>
-                </td>
-                <td class="when">{{ day(g.submitted_at) }}</td>
-                <td v-for="f in guestFields" :key="f.key">{{ guestAnswer(g, f) }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
     </AdminDialog>
 
     <AdminDialog
@@ -783,6 +788,7 @@ import {
   fieldKeyFromLabel,
   formFileLink,
   formResponsesToCsv,
+  mergeRegistrations,
   getFormDriveFolder,
   getAvailableCohorts,
   listEvents,
@@ -885,63 +891,46 @@ const eventBoundLock = computed(
 );
 const dlg = ref(null);
 const responsesFor = ref(null);
-// PANBS guests (spec 007): everyone who registered signed out on the public event page.
+// PANBS guests (spec 007): everyone who registered signed out on the public event page. They are
+// listed with the member responses as one list (mergeRegistrations).
 const guests = ref([]);
+const responses = ref([]);
+const rows = computed(() => mergeRegistrations(responses.value, guests.value));
+const takesGuests = computed(
+  () =>
+    guests.value.length > 0 ||
+    !!events.value.find((event) => event.id === responsesFor.value?.event_id)?.panbs
+);
+const WHO_FILTERS = [
+  { value: 'all', label: 'Everyone' },
+  { value: 'member', label: 'Members' },
+  { value: 'guest', label: 'Guests' },
+];
+const whoFilter = ref('all');
+const whoCounts = computed(() => {
+  const counts = { all: rows.value.length, member: 0, guest: 0 };
+  for (const r of rows.value) counts[r.kind] += 1;
+  return counts;
+});
 const guestHouse = ref('all');
 const ROSTER = '\u0000roster';
+const guestRows = computed(() => rows.value.filter((r) => r.kind === 'guest'));
 const guestHouses = computed(() => {
   const n = {};
-  for (const g of guests.value) n[g.house] = (n[g.house] ?? 0) + 1;
-  const roster = guests.value.filter((g) => g.on_roster).length;
+  for (const g of guestRows.value) n[g.house] = (n[g.house] ?? 0) + 1;
+  const roster = guestRows.value.filter((g) => g.on_roster).length;
   return [
-    { value: 'all', label: 'All houses', n: guests.value.length },
+    { value: 'all', label: 'All houses', n: guestRows.value.length },
     ...(roster ? [{ value: ROSTER, label: 'On Sundarbans roster', n: roster }] : []),
     ...Object.keys(n)
       .sort()
       .map((h) => ({ value: h, label: h, n: n[h] })),
   ];
 });
-const shownGuests = computed(() =>
-  guestHouse.value === 'all'
-    ? guests.value
-    : guestHouse.value === ROSTER
-      ? guests.value.filter((g) => g.on_roster)
-      : guests.value.filter((g) => g.house === guestHouse.value)
-);
-// Questions from the newest guest row's schema, minus the fixed name/email/phone columns.
-const guestFields = computed(() =>
-  (guests.value.at(-1)?.field_schema ?? []).filter(
-    (f) => !['name', 'email', 'phone'].includes(f.prefill) && !isHouseRow(f)
-  )
-);
-function guestAnswer(g, f) {
-  const v = g.answers?.[f.key];
-  if (Array.isArray(v)) return v.join('; ') || '–';
-  if (v === true) return 'Yes';
-  if (v === false) return 'No';
-  return v == null || v === '' ? '–' : String(v);
-}
-function downloadGuests() {
-  const columns = [
-    { key: 'email', label: 'Email' },
-    { key: 'full_name', label: 'Name' },
-    { key: 'phone', label: 'Phone' },
-    { key: 'house', label: 'House' },
-    { key: 'member', label: 'Sundarbans member' },
-    { key: 'roster', label: 'On Sundarbans roster' },
-    { key: 'submitted_at', label: 'Submitted' },
-    ...guestFields.value.map((f) => ({ key: `q:${f.key}`, label: f.label })),
-  ];
-  const rows = shownGuests.value.map((g) => ({
-    ...g,
-    member: g.is_member ? 'yes' : 'no',
-    roster: g.on_roster ? 'yes' : 'no',
-    ...Object.fromEntries(guestFields.value.map((f) => [`q:${f.key}`, guestAnswer(g, f)])),
-  }));
-  downloadCsv(`${responsesFor.value.title}-guests.csv`, rows, columns);
-}
-const responses = ref([]);
-const responseFields = computed(() => formResponsesToCsv(responses.value).fields);
+const inHouse = (g) =>
+  guestHouse.value === 'all' ||
+  (guestHouse.value === ROSTER ? g.on_roster : g.house === guestHouse.value);
+const responseFields = computed(() => formResponsesToCsv(rows.value).fields);
 const driveFolder = ref('');
 let responseRun = 0;
 const respError = ref('');
@@ -969,17 +958,23 @@ const viewing = ref(null);
 let fieldN = 0;
 
 const statusOf = (r) => r.review_status ?? 'pending';
+// Guests are never reviewed: the review filter covers members, the house filter covers guests.
+const whoRows = computed(() =>
+  whoFilter.value === 'all' ? rows.value : rows.value.filter((r) => r.kind === whoFilter.value)
+);
 const statusCounts = computed(() => {
-  const counts = { all: responses.value.length, pending: 0, approved: 0, rejected: 0 };
-  for (const r of responses.value) counts[statusOf(r)] += 1;
+  const counts = { all: whoRows.value.length, pending: 0, approved: 0, rejected: 0 };
+  for (const r of whoRows.value) if (r.kind === 'member') counts[statusOf(r)] += 1;
   return counts;
 });
 // Serials come from the server and never change with the view.
 const shownResponses = computed(() =>
   sortResponses(
-    statusFilter.value === 'all'
-      ? responses.value
-      : responses.value.filter((r) => statusOf(r) === statusFilter.value),
+    whoFilter.value === 'guest'
+      ? whoRows.value.filter(inHouse)
+      : statusFilter.value === 'all'
+        ? whoRows.value
+        : whoRows.value.filter((r) => r.kind === 'member' && statusOf(r) === statusFilter.value),
     sortOrder.value
   )
 );
@@ -1673,6 +1668,7 @@ async function openResponses(f) {
       });
   }
   guests.value = [];
+  whoFilter.value = 'all';
   guestHouse.value = 'all';
   reviewError.value = '';
   refreshNotice.value = '';
@@ -1682,7 +1678,11 @@ async function openResponses(f) {
   try {
     const [rows, guestRows] = await Promise.all([
       exportFormResponses(f.id),
-      listFormGuests(f.id).catch(() => []),
+      // A failed guest load must not look like a form nobody registered for as a guest.
+      listFormGuests(f.id).catch((err) => {
+        if (run === responseRun) respError.value = `Couldn't load guests: ${errorText(err)}`;
+        return [];
+      }),
     ]);
     if (run !== responseRun) return;
     responses.value = rows;
@@ -1810,7 +1810,8 @@ async function confirmReject() {
 }
 
 function downloadResponses() {
-  const csv = formResponsesToCsv(responses.value);
+  // Exports the rows the current filters show, in the order they arrived.
+  const csv = formResponsesToCsv(sortResponses(shownResponses.value, 'oldest'));
   downloadCsv(`${responsesFor.value.title}-responses.csv`, csv.rows, csv.columns);
 }
 </script>
@@ -1970,13 +1971,12 @@ function downloadResponses() {
   font-family: var(--mono);
   font-size: 13px;
 }
-.guests {
-  display: grid;
-  gap: 12px;
-  margin-top: 28px;
-}
-.guests h3 .n {
-  color: var(--ink-3);
+.kind {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+  font-family: var(--font);
 }
 .resp-tools {
   display: flex;

@@ -83,7 +83,7 @@ test('responses show arrival serials; sort and filter never renumber them', asyn
   await dialog.getByRole('button', { name: /^Approved/ }).click();
   expect(await serialsInOrder(dialog)).toEqual(['#2']);
   await dialog.getByRole('button', { name: /^Rejected/ }).click();
-  await expect(dialog.getByText('No rejected responses.')).toBeVisible();
+  await expect(dialog.getByText('Nobody matches this filter.')).toBeVisible();
   await dialog.getByRole('button', { name: /^Pending/ }).click();
   await pick(dialog, 'Sort', 'Newest first');
   expect(await serialsInOrder(dialog)).toEqual(['#3', '#1']);
@@ -236,4 +236,68 @@ test('CSV export carries the serial and review columns', async ({ page }) => {
   expect(first).toBe(
     '1,26f1000001@ds.study.iitm.ac.in,Asha Full,Asha,2026-10-01T10:00:00Z,approved,,House Secretary,2026-10-10T09:00:00Z,Asha'
   );
+});
+
+// PAN BS guests (signed-out registrations) sit in the same list as member responses.
+function panbsDesk() {
+  const data = reviewDesk();
+  const guest = (n, email, house, extra = {}) => ({
+    id: `b1000000-0000-4000-8000-00000000000${n}`,
+    email,
+    full_name: `Guest ${n}`,
+    phone: null,
+    house,
+    on_roster: false,
+    is_member: false,
+    in_lounge: false,
+    answers: { name: `Guest ${n}` },
+    field_schema: SCHEMA,
+    submitted_at: `2026-10-0${n + 3}T10:00:00Z`,
+    ...extra,
+  });
+  data.list_form_guests = [
+    guest(1, 'gir1@ds.study.iitm.ac.in', 'Gir'),
+    guest(2, 'kanha1@ds.study.iitm.ac.in', 'Kanha'),
+    guest(3, 'roster1@ds.study.iitm.ac.in', 'Sundarbans', { on_roster: true, is_member: true }),
+    // Also answered in the Lounge as member #1: listed once, as the member.
+    guest(4, '26f1000001@ds.study.iitm.ac.in', 'Sundarbans', { in_lounge: true, is_member: true }),
+  ];
+  return data;
+}
+
+test('guests and members share one list, labelled and filterable', async ({ page }) => {
+  const { dialog } = await openResponses(page, panbsDesk());
+  await expect(dialog.getByText(/6\s+registrations · 3 members · 3 guests/)).toBeVisible();
+  await expect(dialog.locator('tbody tr')).toHaveCount(6);
+  await expect(dialog.locator('tbody .adm-badge', { hasText: /^Member$/ })).toHaveCount(3);
+  await expect(dialog.getByText('Guest · Gir')).toBeVisible();
+  await expect(dialog.getByText('Sundarbans member')).toHaveCount(1);
+  // The member who also registered as a guest appears once.
+  await expect(dialog.getByText('26f1000001@ds.study.iitm.ac.in')).toHaveCount(1);
+
+  await dialog.getByRole('button', { name: /^Members\s*3$/ }).click();
+  await expect(dialog.locator('tbody tr')).toHaveCount(3);
+  await dialog.getByRole('button', { name: /^Guests\s*3$/ }).click();
+  await expect(dialog.locator('tbody tr')).toHaveCount(3);
+  await expect(dialog.getByRole('button', { name: /^Pending/ })).toHaveCount(0);
+  await dialog.getByRole('button', { name: /^Gir\s*1$/ }).click();
+  await expect(dialog.locator('tbody tr')).toHaveCount(1);
+
+  const downloadPromise = page.waitForEvent('download');
+  await dialog.getByRole('button', { name: 'Download CSV' }).click();
+  const csv = await readFile(await (await downloadPromise).path(), 'utf8');
+  const [header, first] = csv.split('\n');
+  expect(header).toBe(
+    'serial,registered_as,email,full_name,preferred_name,house,phone,sundarbans_member,on_roster,submitted_at,review_status,review_reason,reviewed_by,reviewed_at,Name'
+  );
+  expect(first).toBe(
+    ',guest,gir1@ds.study.iitm.ac.in,Guest 1,,Gir,,no,no,2026-10-04T10:00:00Z,,,,,Guest 1'
+  );
+});
+
+test('a house form without guests shows no member or guest labels', async ({ page }) => {
+  const { dialog } = await openResponses(page);
+  await expect(dialog.locator('tbody tr')).toHaveCount(3);
+  await expect(dialog.getByRole('button', { name: /^Guests/ })).toHaveCount(0);
+  await expect(dialog.locator('tbody .adm-badge', { hasText: /^Member$/ })).toHaveCount(0);
 });
