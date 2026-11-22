@@ -901,14 +901,21 @@ export const reviewFormResponse = (responseId, status, expectedAt, reason = null
     .then(unwrap);
 
 // A PAN BS form takes registrations two ways: members in the Lounge (reviewable responses) and
-// anyone signed out on the public event page (guests). The admin list shows both as one list; a
-// member who used both appears once, as the member, since that row carries the review.
+// anyone signed out on the public event page (guest form). The admin list shows both as one list.
+// Someone on our member list is a member whichever way they came in; a member who used both appears
+// once, as the Lounge response, since that row carries the review. `guestForm` marks rows from the
+// event page: they have no serial and are never reviewed.
 export function mergeRegistrations(responses, guests) {
-  const members = asList(responses).map((r) => ({ ...r, kind: 'member' }));
+  const members = asList(responses).map((r) => ({ ...r, kind: 'member', guestForm: false }));
   const memberEmails = new Set(members.map((r) => r.email));
   const extra = asList(guests)
     .filter((g) => !g.in_lounge && !memberEmails.has(g.email))
-    .map((g) => ({ ...g, kind: 'guest', member_full_name: g.full_name }));
+    .map((g) => ({
+      ...g,
+      kind: g.is_member ? 'member' : 'guest',
+      guestForm: true,
+      member_full_name: g.full_name,
+    }));
   return [...members, ...extra];
 }
 
@@ -944,8 +951,8 @@ export function formResponsesToCsv(payload) {
       fields.push(entry);
     }
   }
-  // Guest columns only appear when the list includes PAN BS guests.
-  const hasGuests = rows.some((row) => row.kind === 'guest');
+  // Guest-form columns only appear when the list includes PAN BS event-page registrations.
+  const hasGuests = rows.some((row) => row.guestForm);
   const usedLabels = new Set([
     'serial',
     'email',
@@ -956,7 +963,7 @@ export function formResponsesToCsv(payload) {
     'review_reason',
     'reviewed_by',
     'reviewed_at',
-    ...(hasGuests ? ['registered_as', 'house', 'phone', 'sundarbans_member', 'on_roster'] : []),
+    ...(hasGuests ? ['registered_as', 'signed_up_via', 'house', 'phone', 'on_roster'] : []),
   ]);
   const labelCounts = new Map();
   for (const field of fields) {
@@ -973,7 +980,12 @@ export function formResponsesToCsv(payload) {
   }
   const columns = [
     { key: 'serial', label: 'serial' },
-    ...(hasGuests ? [{ key: 'registered_as', label: 'registered_as' }] : []),
+    ...(hasGuests
+      ? [
+          { key: 'registered_as', label: 'registered_as' },
+          { key: 'signed_up_via', label: 'signed_up_via' },
+        ]
+      : []),
     { key: 'email', label: 'email' },
     { key: 'full_name', label: 'full_name' },
     { key: 'preferred_name', label: 'preferred_name' },
@@ -981,7 +993,6 @@ export function formResponsesToCsv(payload) {
       ? [
           { key: 'house', label: 'house' },
           { key: 'phone', label: 'phone' },
-          { key: 'sundarbans_member', label: 'sundarbans_member' },
           { key: 'on_roster', label: 'on_roster' },
         ]
       : []),
@@ -999,10 +1010,10 @@ export function formResponsesToCsv(payload) {
       email: row.email,
       full_name: row.member_full_name,
       preferred_name: row.member_preferred_name,
-      house: row.kind === 'guest' ? row.house : 'Sundarbans',
+      signed_up_via: row.guestForm ? 'event page' : 'lounge',
+      house: row.guestForm ? row.house : 'Sundarbans',
       phone: row.phone,
-      sundarbans_member: row.kind === 'member' || row.is_member ? 'yes' : 'no',
-      on_roster: row.kind === 'guest' ? (row.on_roster ? 'yes' : 'no') : '',
+      on_roster: row.guestForm ? (row.on_roster ? 'yes' : 'no') : '',
       submitted_at: row.submitted_at,
       review_status: row.review_status,
       review_reason: row.review_reason,

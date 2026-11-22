@@ -76,17 +76,25 @@ test('responses show arrival serials; sort and filter never renumber them', asyn
   expect(await serialsInOrder(dialog)).toEqual(['#1', '#2', '#3']);
 
   await dialog.getByRole('button', { name: 'Approve 26f1000002@ds.study.iitm.ac.in' }).click();
-  await expect(dialog.getByRole('button', { name: /^Approved\s*1$/ })).toBeVisible();
-  await expect(dialog.getByRole('button', { name: /^Pending\s*2$/ })).toBeVisible();
-  await expect(dialog.getByRole('button', { name: /^All\s*3$/ })).toBeVisible();
-
-  await dialog.getByRole('button', { name: /^Approved/ }).click();
+  await dialog.getByRole('combobox', { name: 'Review' }).click();
+  await expect(dialog.getByRole('option', { name: 'Any status · 3' })).toBeVisible();
+  await expect(dialog.getByRole('option', { name: 'Pending · 2' })).toBeVisible();
+  // An empty status stays listed but cannot be picked.
+  await expect(dialog.getByRole('option', { name: 'Rejected · 0' })).toHaveAttribute(
+    'aria-disabled',
+    'true'
+  );
+  await dialog.getByRole('option', { name: 'Approved · 1', exact: true }).click();
   expect(await serialsInOrder(dialog)).toEqual(['#2']);
-  await dialog.getByRole('button', { name: /^Rejected/ }).click();
-  await expect(dialog.getByText('Nobody matches this filter.')).toBeVisible();
-  await dialog.getByRole('button', { name: /^Pending/ }).click();
+
+  await pick(dialog, 'Review', 'Pending · 2');
   await pick(dialog, 'Sort', 'Newest first');
   expect(await serialsInOrder(dialog)).toEqual(['#3', '#1']);
+  await dialog.getByRole('button', { name: 'Approve 26f1000003@ds.study.iitm.ac.in' }).click();
+  await dialog.getByRole('button', { name: 'Approve 26f1000001@ds.study.iitm.ac.in' }).click();
+  await expect(dialog.getByText('Nobody matches this filter.')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect(dialog.locator('tbody tr')).toHaveCount(3);
 });
 
 test('a resent response keeps its serial and place, and says when it was resent', async ({
@@ -267,20 +275,33 @@ function panbsDesk() {
 
 test('guests and members share one list, labelled and filterable', async ({ page }) => {
   const { dialog } = await openResponses(page, panbsDesk());
-  await expect(dialog.getByText(/6\s+registrations · 3 members · 3 guests/)).toBeVisible();
+  await expect(dialog.getByText(/6\s+registrations/)).toBeVisible();
   await expect(dialog.locator('tbody tr')).toHaveCount(6);
-  await expect(dialog.locator('tbody .adm-badge', { hasText: /^Member$/ })).toHaveCount(3);
-  await expect(dialog.getByText('Guest · Gir')).toBeVisible();
-  await expect(dialog.getByText('Sundarbans member')).toHaveCount(1);
+  // Anyone on the member list is a Member, even when they signed up on the event page.
+  await expect(dialog.locator('tbody .adm-badge', { hasText: /^Member$/ })).toHaveCount(4);
+  await expect(dialog.locator('tbody .adm-badge', { hasText: /^Guest$/ })).toHaveCount(2);
+  await expect(
+    dialog
+      .locator('tbody tr', { hasText: 'roster1@ds.study.iitm.ac.in' })
+      .getByText('Signed up on the event page, so not reviewed.')
+  ).toBeVisible();
   // The member who also registered as a guest appears once.
   await expect(dialog.getByText('26f1000001@ds.study.iitm.ac.in')).toHaveCount(1);
 
-  await dialog.getByRole('button', { name: /^Members\s*3$/ }).click();
-  await expect(dialog.locator('tbody tr')).toHaveCount(3);
-  await dialog.getByRole('button', { name: /^Guests\s*3$/ }).click();
-  await expect(dialog.locator('tbody tr')).toHaveCount(3);
-  await expect(dialog.getByRole('button', { name: /^Pending/ })).toHaveCount(0);
-  await dialog.getByRole('button', { name: /^Gir\s*1$/ }).click();
+  await dialog.getByRole('button', { name: /^Members\s*4$/ }).click();
+  await expect(dialog.getByRole('button', { name: /^Members/ })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
+  await expect(dialog.locator('tbody tr')).toHaveCount(4);
+  await pick(dialog, 'Review', 'Signed up on event page · 1');
+  await expect(dialog.locator('tbody tr')).toHaveCount(1);
+
+  // Switching who clears the refinement; guests are filtered by house, never by review.
+  await dialog.getByRole('button', { name: /^Guests\s*2$/ }).click();
+  await expect(dialog.locator('tbody tr')).toHaveCount(2);
+  await expect(dialog.getByRole('combobox', { name: 'Review' })).toHaveCount(0);
+  await pick(dialog, 'House', 'Gir · 1');
   await expect(dialog.locator('tbody tr')).toHaveCount(1);
 
   const downloadPromise = page.waitForEvent('download');
@@ -288,10 +309,10 @@ test('guests and members share one list, labelled and filterable', async ({ page
   const csv = await readFile(await (await downloadPromise).path(), 'utf8');
   const [header, first] = csv.split('\n');
   expect(header).toBe(
-    'serial,registered_as,email,full_name,preferred_name,house,phone,sundarbans_member,on_roster,submitted_at,review_status,review_reason,reviewed_by,reviewed_at,Name'
+    'serial,registered_as,signed_up_via,email,full_name,preferred_name,house,phone,on_roster,submitted_at,review_status,review_reason,reviewed_by,reviewed_at,Name'
   );
   expect(first).toBe(
-    ',guest,gir1@ds.study.iitm.ac.in,Guest 1,,Gir,,no,no,2026-10-04T10:00:00Z,,,,,Guest 1'
+    ',guest,event page,gir1@ds.study.iitm.ac.in,Guest 1,,Gir,,no,2026-10-04T10:00:00Z,,,,,Guest 1'
   );
 });
 
@@ -299,5 +320,6 @@ test('a house form without guests shows no member or guest labels', async ({ pag
   const { dialog } = await openResponses(page);
   await expect(dialog.locator('tbody tr')).toHaveCount(3);
   await expect(dialog.getByRole('button', { name: /^Guests/ })).toHaveCount(0);
+  await expect(dialog.getByRole('combobox', { name: 'Review' })).toBeVisible();
   await expect(dialog.locator('tbody .adm-badge', { hasText: /^Member$/ })).toHaveCount(0);
 });

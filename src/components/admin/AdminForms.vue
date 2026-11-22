@@ -493,8 +493,6 @@
             <template v-if="takesGuests">
               <b>{{ rows.length }}</b>
               {{ rows.length === 1 ? 'registration' : 'registrations' }}
-              · {{ whoCounts.member }} {{ whoCounts.member === 1 ? 'member' : 'members' }} ·
-              {{ whoCounts.guest }} {{ whoCounts.guest === 1 ? 'guest' : 'guests' }}
             </template>
             <template v-else>
               <b>{{ rows.length }}</b>
@@ -514,51 +512,36 @@
           Download CSV
         </button>
       </div>
-      <div v-if="rows.length && takesGuests" class="resp-tools">
-        <div class="adm-chips" role="group" aria-label="Filter members and guests">
-          <button
-            v-for="o in WHO_FILTERS"
-            :key="o.value"
-            type="button"
-            class="adm-chip"
-            :class="{ on: whoFilter === o.value }"
-            :aria-pressed="whoFilter === o.value"
-            @click="whoFilter = o.value"
-          >
-            {{ o.label }} <span class="n">{{ whoCounts[o.value] }}</span>
-          </button>
-        </div>
-      </div>
+      <!-- One filter row: who (PAN BS only), then the one refinement that applies to them
+           (review status for members, house for guests), then sort. -->
       <div v-if="rows.length" class="resp-tools">
-        <div
-          v-if="whoFilter === 'guest'"
-          class="adm-chips"
-          role="group"
-          aria-label="Filter guests by house"
-        >
+        <div class="resp-filters">
+          <div v-if="takesGuests" class="seg" role="group" aria-label="Show">
+            <button
+              v-for="o in WHO_FILTERS"
+              :key="o.value"
+              type="button"
+              :aria-pressed="whoFilter === o.value"
+              @click="showWho(o.value)"
+            >
+              {{ o.label }} <span class="n">{{ whoCounts[o.value] }}</span>
+            </button>
+          </div>
+          <label v-if="showHouseFilter" class="sort">
+            <span>House</span>
+            <AdminSelect v-model="guestHouse" :options="guestHouses" />
+          </label>
+          <label v-else-if="showReviewFilter" class="sort">
+            <span>Review</span>
+            <AdminSelect v-model="statusFilter" :options="reviewOptions" />
+          </label>
           <button
-            v-for="h in guestHouses"
-            :key="h.value"
+            v-if="statusFilter !== 'all' || guestHouse !== 'all'"
             type="button"
-            class="adm-chip"
-            :class="{ on: guestHouse === h.value }"
-            :aria-pressed="guestHouse === h.value"
-            @click="guestHouse = h.value"
+            class="adm-btn ghost small"
+            @click="clearFilter"
           >
-            {{ h.label }} <span class="n">{{ h.n }}</span>
-          </button>
-        </div>
-        <div v-else class="adm-chips" role="group" aria-label="Filter by review status">
-          <button
-            v-for="o in STATUS_FILTERS"
-            :key="o.value"
-            type="button"
-            class="adm-chip"
-            :class="{ on: statusFilter === o.value }"
-            :aria-pressed="statusFilter === o.value"
-            @click="statusFilter = o.value"
-          >
-            {{ o.label }} <span class="n">{{ statusCounts[o.value] }}</span>
+            Clear
           </button>
         </div>
         <label class="sort">
@@ -585,26 +568,20 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in shownResponses" :key="`${r.kind}:${r.id}`">
+            <tr v-for="r in shownResponses" :key="`${r.guestForm ? 'g' : 'm'}:${r.id}`">
               <td class="who">
                 <span
-                  v-if="r.kind === 'member'"
+                  v-if="!r.guestForm"
                   class="serial"
                   :title="`Response ${r.serial} in order received`"
                   >#{{ r.serial }}</span
                 >
                 {{ r.email }}
                 <small v-if="memberName(r)" class="member-name">{{ memberName(r) }}</small>
-                <small v-if="r.kind === 'guest' && r.phone" class="member-name">{{
-                  r.phone
-                }}</small>
+                <small v-if="r.guestForm && r.phone" class="member-name">{{ r.phone }}</small>
                 <span v-if="takesGuests" class="kind">
                   <span v-if="r.kind === 'member'" class="adm-badge mari">Member</span>
-                  <template v-else>
-                    <span class="adm-badge">Guest · {{ r.house }}</span>
-                    <span v-if="r.is_member" class="adm-badge mari">Sundarbans member</span>
-                    <span v-else-if="r.on_roster" class="adm-badge mari">On roster</span>
-                  </template>
+                  <span v-else class="adm-badge">Guest</span>
                 </span>
               </td>
               <td class="when">
@@ -613,9 +590,15 @@
                   >Resent {{ day(r.resubmitted_at) }}</small
                 >
               </td>
-              <td v-if="r.kind === 'guest'" class="review">
+              <td v-if="r.guestForm" class="review">
                 <span class="none">–</span>
-                <p class="by">Guests are not reviewed.</p>
+                <p class="by">
+                  {{
+                    r.kind === 'guest'
+                      ? 'Guests are not reviewed.'
+                      : 'Signed up on the event page, so not reviewed.'
+                  }}
+                </p>
               </td>
               <td v-else class="review">
                 <span class="adm-badge" :class="STATUS_TONE[r.review_status]">{{
@@ -845,12 +828,6 @@ const SORT_ORDERS = [
 ];
 const editorId = useId();
 const rejectId = useId();
-const STATUS_FILTERS = [
-  { value: 'all', label: 'All' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'rejected', label: 'Rejected' },
-];
 const STATUS_TONE = { pending: '', approved: 'mari', rejected: 'verm' };
 
 const isHead = computed(
@@ -920,11 +897,11 @@ const guestHouses = computed(() => {
   for (const g of guestRows.value) n[g.house] = (n[g.house] ?? 0) + 1;
   const roster = guestRows.value.filter((g) => g.on_roster).length;
   return [
-    { value: 'all', label: 'All houses', n: guestRows.value.length },
-    ...(roster ? [{ value: ROSTER, label: 'On Sundarbans roster', n: roster }] : []),
+    { value: 'all', label: `All houses · ${guestRows.value.length}` },
+    ...(roster ? [{ value: ROSTER, label: `On Sundarbans roster · ${roster}` }] : []),
     ...Object.keys(n)
       .sort()
-      .map((h) => ({ value: h, label: h, n: n[h] })),
+      .map((h) => ({ value: h, label: `${h} · ${n[h]}` })),
   ];
 });
 const inHouse = (g) =>
@@ -958,25 +935,48 @@ const viewing = ref(null);
 let fieldN = 0;
 
 const statusOf = (r) => r.review_status ?? 'pending';
-// Guests are never reviewed: the review filter covers members, the house filter covers guests.
+// Only Lounge responses are reviewed, so the review filter shows for members (or a form without
+// guests) and the house filter for guests. Everyone shows no refinement: neither applies to all.
 const whoRows = computed(() =>
   whoFilter.value === 'all' ? rows.value : rows.value.filter((r) => r.kind === whoFilter.value)
 );
-const statusCounts = computed(() => {
-  const counts = { all: whoRows.value.length, pending: 0, approved: 0, rejected: 0 };
-  for (const r of whoRows.value) if (r.kind === 'member') counts[statusOf(r)] += 1;
-  return counts;
+const showReviewFilter = computed(() => !takesGuests.value || whoFilter.value === 'member');
+const showHouseFilter = computed(() => whoFilter.value === 'guest' && guestHouses.value.length > 2);
+const EVENT_PAGE = 'event-page';
+const reviewOptions = computed(() => {
+  const n = { pending: 0, approved: 0, rejected: 0, [EVENT_PAGE]: 0 };
+  for (const r of whoRows.value) n[r.guestForm ? EVENT_PAGE : statusOf(r)] += 1;
+  // Empty statuses stay listed but disabled, so the list reads the same on every form.
+  const option = (value, label) => ({
+    value,
+    label: `${label} · ${n[value]}`,
+    disabled: !n[value] && statusFilter.value !== value,
+  });
+  return [
+    { value: 'all', label: `Any status · ${whoRows.value.length}` },
+    option('pending', 'Pending'),
+    option('approved', 'Approved'),
+    option('rejected', 'Rejected'),
+    ...(n[EVENT_PAGE] ? [option(EVENT_PAGE, 'Signed up on event page')] : []),
+  ];
 });
+const matchesFilter = (r) => {
+  if (whoFilter.value === 'guest') return inHouse(r);
+  if (statusFilter.value === 'all') return true;
+  if (statusFilter.value === EVENT_PAGE) return r.guestForm;
+  return !r.guestForm && statusOf(r) === statusFilter.value;
+};
+function clearFilter() {
+  statusFilter.value = 'all';
+  guestHouse.value = 'all';
+}
+function showWho(value) {
+  whoFilter.value = value;
+  clearFilter();
+}
 // Serials come from the server and never change with the view.
 const shownResponses = computed(() =>
-  sortResponses(
-    whoFilter.value === 'guest'
-      ? whoRows.value.filter(inHouse)
-      : statusFilter.value === 'all'
-        ? whoRows.value
-        : whoRows.value.filter((r) => r.kind === 'member' && statusOf(r) === statusFilter.value),
-    sortOrder.value
-  )
+  sortResponses(whoRows.value.filter(matchesFilter), sortOrder.value)
 );
 const memberName = (r) => r.member_full_name || r.member_preferred_name || '';
 const reviewedBy = (r) =>
@@ -1986,7 +1986,57 @@ function downloadResponses() {
   gap: 10px 16px;
   margin-bottom: 14px;
 }
-.resp-tools .n {
+.resp-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+/* Who is in view: one connected control, so it reads as a single choice, not loose tags. */
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--sunk);
+}
+.seg button {
+  min-block-size: 30px;
+  min-inline-size: 24px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.seg button[aria-pressed='true'] {
+  background: var(--mari);
+  color: var(--on-mari);
+}
+.seg button:focus-visible {
+  outline: 2px solid var(--mari-ink);
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  .seg button[aria-pressed='false']:hover {
+    background: var(--mari-soft);
+    color: var(--ink);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .seg button {
+    transition:
+      background-color 0.2s,
+      color 0.2s;
+  }
+}
+.seg .n {
   margin-left: 4px;
   font-variant-numeric: tabular-nums;
   opacity: 0.75;
