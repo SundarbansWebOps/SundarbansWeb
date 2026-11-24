@@ -368,6 +368,9 @@
                 <p v-if="field.fixed === 'house'" class="adm-note wide">
                   Guests pick from the 12 IITM BS houses, or “Not allotted yet”.
                 </p>
+                <p v-if="field.fixed === 'level'" class="adm-note wide">
+                  Students pick {{ BS_LEVELS.join(', ') }}.
+                </p>
                 <template v-if="field.type === 'file'">
                   <label class="adm-field">
                     <span>Accept</span>
@@ -795,6 +798,7 @@ import { askConfirm } from '../../lib/admin-confirm.js';
 import { decodeFileAnswer, fetchFormFileBlob, uploadFormBanner } from '../../lib/form-files.js';
 import { auth, errorText, isRc, isSuperAdmin } from '../../lib/auth.js';
 import {
+  BS_LEVELS,
   FORM_FIELD_TYPES,
   EVENT_DEFAULTS,
   IITM_HOUSES,
@@ -1155,7 +1159,7 @@ const fromLocal = (v) => (v ? new Date(v).toISOString() : null);
 const isChoice = (field) => field.type === 'select' || field.type === 'multiselect';
 const isQuestion = (field) => !['file', 'section', 'page_break'].includes(field.type);
 // An event-bound form shows the event's default questions as its first rows: PAN BS events
-// add the house row (spec 007), every other event gets name, email and phone.
+// add the house row (spec 007), every other event gets name, email, phone and level.
 const formEvent = computed(() =>
   form.value?.scope === 'event'
     ? events.value.find((event) => event.id === form.value.event_id)
@@ -1371,7 +1375,9 @@ watch(
         take((x) => x.fixed === d.fixed) ||
         (d.prefill && take((x) => x.prefill === d.prefill)) ||
         // The server allows one phone question per form.
-        (d.fixed === 'phone' && take((x) => x.type === 'phone'));
+        (d.fixed === 'phone' && take((x) => x.type === 'phone')) ||
+        // Earlier PAN BS forms asked level as an ordinary dropdown keyed `level`.
+        (d.fixed === 'level' && take((x) => x.key === 'level' && x.type === 'select'));
       if (row)
         return Object.assign(row, { fixed: d.fixed, type: d.type, prefill: d.prefill || '' });
       return wrapField(d);
@@ -1472,6 +1478,7 @@ function fieldPayload(field, pageNo) {
     // The pop-up always asks name, email and house; the house row holds no answer.
     row.required = field.fixed === 'phone' ? !!field.required : field.fixed !== 'house';
     if (field.fixed === 'house') row.options = IITM_HOUSES;
+    if (field.fixed === 'level') row.options = BS_LEVELS;
   }
   return row;
 }

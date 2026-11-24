@@ -49,6 +49,9 @@ export const PREFILL_KEYS = ['name', 'phone', 'email'];
 // how they are answered. Name, email and phone prefill like any question. The house row is never
 // answered as a question: the pop-up sends the house separately, and members never see it.
 // Its options mirror private.iitm_houses() only so the server's select validation accepts the row.
+// Level is an ordinary required dropdown (guests and members answer it like any question); its
+// options are fixed to BS_LEVELS.
+export const BS_LEVELS = ['Foundation', 'Diploma', 'Degree'];
 export const PANBS_DEFAULTS = [
   { fixed: 'name', key: 'name', label: 'Name', type: 'text', prefill: 'name', required: true },
   {
@@ -67,6 +70,14 @@ export const PANBS_DEFAULTS = [
     type: 'phone',
     prefill: 'phone',
     required: false,
+  },
+  {
+    fixed: 'level',
+    key: 'level',
+    label: 'Level',
+    type: 'select',
+    required: true,
+    options: BS_LEVELS,
   },
 ];
 // Every other event-bound form starts with the same questions minus the house (no house picker
