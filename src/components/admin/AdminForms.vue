@@ -293,8 +293,7 @@
             <li v-for="(field, i) in form.fields" :key="field._id" class="adm-card question">
               <div class="question-head">
                 <span class="adm-kicker">{{ blockKind(field) }}</span>
-                <span v-if="field.fixed" class="adm-note fixed-note">{{ FIXED_NOTE }}</span>
-                <div v-else class="adm-chips">
+                <div v-if="!field.fixed" class="adm-chips">
                   <button
                     type="button"
                     class="adm-btn ghost small"
@@ -367,6 +366,9 @@
                 <AdminOptionList v-if="isChoice(field) && !field.fixed" v-model="field.options" />
                 <p v-if="field.fixed === 'house'" class="adm-note wide">
                   Guests pick from the 12 IITM BS houses, or “Not allotted yet”.
+                </p>
+                <p v-if="field.fixed === 'level'" class="adm-note wide">
+                  Students pick {{ BS_LEVELS.join(', ') }}.
                 </p>
                 <template v-if="field.type === 'file'">
                   <label class="adm-field">
@@ -795,7 +797,9 @@ import { askConfirm } from '../../lib/admin-confirm.js';
 import { decodeFileAnswer, fetchFormFileBlob, uploadFormBanner } from '../../lib/form-files.js';
 import { auth, errorText, isRc, isSuperAdmin } from '../../lib/auth.js';
 import {
+  BS_LEVELS,
   FORM_FIELD_TYPES,
+  EVENT_DEFAULTS,
   IITM_HOUSES,
   PANBS_DEFAULTS,
   cancelRequest,
@@ -841,7 +845,7 @@ const TYPE_LABEL = {
   textarea: 'Long text',
   email: 'Email',
   phone: 'Phone number',
-  select: 'Choose one',
+  select: 'Dropdown (choose one)',
   checkbox: 'Tick box',
   multiselect: 'Choose many',
 };
@@ -1153,15 +1157,20 @@ const toLocal = (iso) => {
 const fromLocal = (v) => (v ? new Date(v).toISOString() : null);
 const isChoice = (field) => field.type === 'select' || field.type === 'multiselect';
 const isQuestion = (field) => !['file', 'section', 'page_break'].includes(field.type);
-const blockKind = (field) =>
-  field.fixed ? 'PAN BS default' : (BLOCK_KIND[field.type] ?? 'Question');
-const FIXED_NOTE = 'Asked first on every PAN BS registration. You can reword it.';
-// A form bound to a PAN BS event shows the registration's fixed questions as its first rows.
-const isPanbsForm = computed(
-  () =>
-    form.value?.scope === 'event' &&
-    !!events.value.find((event) => event.id === form.value.event_id)?.panbs
+// An event-bound form shows the event's default questions as its first rows: PAN BS events
+// add the house row (spec 007), every other event gets name, email, phone and level.
+const formEvent = computed(() =>
+  form.value?.scope === 'event'
+    ? events.value.find((event) => event.id === form.value.event_id)
+    : null
 );
+const isPanbsForm = computed(() => !!formEvent.value?.panbs);
+const blockKind = (field) =>
+  field.fixed
+    ? isPanbsForm.value
+      ? 'PAN BS default'
+      : 'Event default'
+    : (BLOCK_KIND[field.type] ?? 'Question');
 const fixedCount = computed(() => form.value?.fields.filter((f) => f.fixed).length ?? 0);
 // Choice questions need at least one option, all different (the server needs one; duplicates
 // would make two answers look the same).
@@ -1335,21 +1344,24 @@ watch(
   }
 );
 
-// Put the PAN BS defaults at the top of a PAN BS form, reusing questions that already take the
-// name, email or phone. Leaving PAN BS drops the house row and turns the rest into ordinary questions.
+// Put the event's defaults at the top of an event form, reusing questions that already take the
+// name, email or phone. A non-PAN BS event drops the house row; leaving events entirely turns the
+// defaults into ordinary questions. An older non-PAN BS event form that never had defaults keeps
+// its questions as they are, so opening it does not reshuffle what students already answered.
 watch(
-  () => [form.value, isPanbsForm.value],
-  ([f, panbs]) => {
+  () => [form.value, formEvent.value, isPanbsForm.value],
+  ([f, event, panbs]) => {
     if (!f) return;
-    // Event list failed to load: leave the rows alone rather than drop a PAN BS form's defaults.
-    if (f.scope === 'event' && f.event_id && !events.value.some((e) => e.id === f.event_id)) return;
-    if (!panbs) {
-      f.fields = f.fields.filter((x) => !isHouseRow(x));
+    // Event list failed to load: leave the rows alone rather than drop the form's defaults.
+    if (f.scope === 'event' && f.event_id && !event) return;
+    if (!panbs) f.fields = f.fields.filter((x) => !isHouseRow(x));
+    if (!event) {
       for (const x of f.fields) x.fixed = '';
       return;
     }
+    if (!panbs && f.id && f.fields.length && !f.fields.some((x) => x.fixed)) return;
     const rest = [...f.fields];
-    const top = PANBS_DEFAULTS.map((d) => {
+    const top = (panbs ? PANBS_DEFAULTS : EVENT_DEFAULTS).map((d) => {
       const take = (pred) => {
         const i = rest.findIndex(pred);
         return i < 0 ? null : rest.splice(i, 1)[0];
@@ -1358,7 +1370,9 @@ watch(
         take((x) => x.fixed === d.fixed) ||
         (d.prefill && take((x) => x.prefill === d.prefill)) ||
         // The server allows one phone question per form.
-        (d.fixed === 'phone' && take((x) => x.type === 'phone'));
+        (d.fixed === 'phone' && take((x) => x.type === 'phone')) ||
+        // Earlier PAN BS forms asked level as an ordinary dropdown keyed `level`.
+        (d.fixed === 'level' && take((x) => x.key === 'level' && x.type === 'select'));
       if (row)
         return Object.assign(row, { fixed: d.fixed, type: d.type, prefill: d.prefill || '' });
       return wrapField(d);
@@ -1459,6 +1473,7 @@ function fieldPayload(field, pageNo) {
     // The pop-up always asks name, email and house; the house row holds no answer.
     row.required = field.fixed === 'phone' ? !!field.required : field.fixed !== 'house';
     if (field.fixed === 'house') row.options = IITM_HOUSES;
+    if (field.fixed === 'level') row.options = BS_LEVELS;
   }
   return row;
 }
@@ -2023,10 +2038,6 @@ function downloadResponses() {
 }
 .question-head .adm-kicker {
   margin: 0;
-}
-.question-head .fixed-note {
-  margin: 0;
-  font-size: 12px;
 }
 .advanced {
   padding-top: 10px;
