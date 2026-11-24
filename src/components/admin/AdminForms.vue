@@ -293,8 +293,7 @@
             <li v-for="(field, i) in form.fields" :key="field._id" class="adm-card question">
               <div class="question-head">
                 <span class="adm-kicker">{{ blockKind(field) }}</span>
-                <span v-if="field.fixed" class="adm-note fixed-note">{{ fixedNote }}</span>
-                <div v-else class="adm-chips">
+                <div v-if="!field.fixed" class="adm-chips">
                   <button
                     type="button"
                     class="adm-btn ghost small"
@@ -1172,10 +1171,6 @@ const blockKind = (field) =>
       ? 'PAN BS default'
       : 'Event default'
     : (BLOCK_KIND[field.type] ?? 'Question');
-const fixedNote = computed(
-  () =>
-    `Asked first on every ${isPanbsForm.value ? 'PAN BS' : 'event'} registration. You can reword it.`
-);
 const fixedCount = computed(() => form.value?.fields.filter((f) => f.fixed).length ?? 0);
 // Choice questions need at least one option, all different (the server needs one; duplicates
 // would make two answers look the same).
@@ -2043,10 +2038,6 @@ function downloadResponses() {
 }
 .question-head .adm-kicker {
   margin: 0;
-}
-.question-head .fixed-note {
-  margin: 0;
-  font-size: 12px;
 }
 .advanced {
   padding-top: 10px;
