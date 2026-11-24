@@ -80,7 +80,12 @@
               <b>Not approved.</b>
               {{ regForm.review_reason || 'The admins could not approve this registration.' }}
             </p>
-            <button v-if="regOpen" type="button" class="gp-btn is-big" @click="step = 'form'">
+            <button
+              v-if="regOpen"
+              type="button"
+              class="gp-btn is-big is-block"
+              @click="step = 'form'"
+            >
               Register again
             </button>
           </template>
@@ -108,8 +113,10 @@
             </p>
           </template>
           <template v-else-if="regOpen">
-            <button type="button" class="gp-btn is-big" @click="step = 'form'">Register</button>
-            <p v-if="!early" class="evd-small">Starts {{ until(event.starts_at) }}.</p>
+            <button type="button" class="gp-btn is-big is-block" @click="step = 'form'">
+              Register
+            </button>
+            <p v-if="!early" class="evd-small evd-starts">Starts {{ until(event.starts_at) }}.</p>
           </template>
           <p v-else-if="!early" class="evd-plain">Registration is not open for this event.</p>
         </div>
@@ -146,11 +153,16 @@
 
       <!-- Register: B's sheet -->
       <template v-else-if="step === 'form'">
-        <p class="evd-kick gp-kicker">Register</p>
-        <h2 id="ed-h" class="evd-h">{{ event.name }}</h2>
-        <p class="evd-sub">
-          <b>{{ spanOf(event) }}</b> · {{ until(event.starts_at) }}
-        </p>
+        <div class="evd-head">
+          <div>
+            <p class="evd-kick gp-kicker">Register</p>
+            <h2 id="ed-h" class="evd-h">{{ event.name }}</h2>
+            <p class="evd-sub">
+              <b>{{ spanOf(event) }}</b> · {{ until(event.starts_at) }}
+            </p>
+          </div>
+          <ShareLink :to="shareTo" />
+        </div>
         <form class="evd-form" novalidate @submit.prevent="submit">
           <FormQuestions
             v-if="regForm"
@@ -226,6 +238,7 @@ import { KITE_MINE, LANTERN } from './home/art.js';
 import FormQuestions from './FormQuestions.vue';
 import FormSubmittedFiles from './FormSubmittedFiles.vue';
 import LoungeDialog from './LoungeDialog.vue';
+import ShareLink from './ShareLink.vue';
 import {
   ago,
   certOf,
@@ -266,6 +279,11 @@ const joinHref = computed(() => meetHref(props.event));
 const mark = computed(() => markOf(props.event));
 const cert = computed(() => certOf(props.event));
 const regForm = computed(() => formByEvent(props.event.id));
+/* Opens this event's register sheet in the Lounge (EventsPage reads `register`). */
+const shareTo = computed(() => ({
+  path: '/lounge',
+  query: { view: 'events', register: props.event.id },
+}));
 const addState = computed(() => groupAddState(regForm.value));
 watch(
   () => addState.value === 'waiting' && regForm.value?.id,

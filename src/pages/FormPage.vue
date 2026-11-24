@@ -458,7 +458,7 @@ h1 {
   padding: 10px 14px;
   border: 1.5px solid var(--line-strong);
   border-radius: 12px;
-  background: var(--paper);
+  background-color: var(--paper);
   color: var(--ink);
   font: inherit;
   font-size: 16px;

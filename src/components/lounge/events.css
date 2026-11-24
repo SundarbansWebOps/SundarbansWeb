@@ -1280,13 +1280,153 @@
   font-weight: 650;
 }
 
-:where(html.lounge-active) .evd-opt input,
-:where(html.lounge-active) .evd-check input,
-:where(html.lounge-active) .ff-check input {
+:where(html.lounge-active) .evd-opt input {
   width: 18px;
   height: 18px;
   margin: 0;
   accent-color: var(--accent);
+}
+
+/* Checkboxes in the house's ink: a keyline box on paper that fills with lamp and a pat-ink tick,
+   pressed down like the buttons. */
+:where(html.lounge-active) :is(.evd-check, .ff-check, .ff-other) input[type='checkbox'] {
+  appearance: none;
+  flex: none;
+  display: inline-grid;
+  place-content: center;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  border: var(--kw) solid var(--keyline);
+  border-radius: 4px;
+  background: var(--paper-2);
+  box-shadow: 0 2px 0 var(--keyline);
+  cursor: pointer;
+  transition:
+    background-color 160ms var(--ease-out),
+    border-color 160ms var(--ease-out),
+    box-shadow 160ms var(--ease-out),
+    transform 160ms var(--ease-out);
+}
+:where(html.lounge-active) :is(.evd-check, .ff-check, .ff-other) input[type='checkbox']::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  background: var(--pat-ink);
+  clip-path: polygon(12% 50%, 0 66%, 40% 100%, 100% 20%, 86% 6%, 39% 70%);
+  transform: scale(0);
+  transition: transform 200ms var(--ease-spring);
+}
+:where(html.lounge-active) :is(.evd-check, .ff-check, .ff-other) input[type='checkbox']:checked {
+  border-color: var(--pat-ink);
+  background: var(--lamp);
+  box-shadow: 0 1px 0 var(--pat-ink);
+  transform: translateY(1px);
+}
+:where(html.lounge-active)
+  :is(.evd-check, .ff-check, .ff-other)
+  input[type='checkbox']:checked::before {
+  transform: scale(1);
+}
+:where(html.lounge-active) :is(.evd-check, .ff-check, .ff-other) input[type='checkbox']:hover {
+  border-color: var(--t-1);
+}
+:where(html.lounge-active)
+  :is(.evd-check, .ff-check, .ff-other)
+  input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+:where(html.lounge-active) :is(.evd-check, .ff-check, .ff-other) input[type='checkbox']:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+:where(html.lounge-active) .ff-check,
+:where(html.lounge-active) .ff-other {
+  cursor: pointer;
+}
+
+/* Dropdowns: the closed box matches the text fields with a drawn chevron. Where the browser can
+   style the open list (appearance: base-select), it is a paper sheet in the same keyline. */
+:where(html.lounge-active) .ff-field select {
+  appearance: none;
+  padding-right: 40px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--t-2) 50%),
+    linear-gradient(135deg, var(--t-2) 50%, transparent 50%);
+  background-position:
+    calc(100% - 20px) 50%,
+    calc(100% - 14px) 50%;
+  background-size: 6px 6px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+:where(html.lounge-active) .ff-field select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+@supports (appearance: base-select) {
+  :where(html.lounge-active) .ff-field select,
+  :where(html.lounge-active) .ff-field select::picker(select) {
+    appearance: base-select;
+  }
+  :where(html.lounge-active) .ff-field select {
+    display: flex;
+    align-items: center;
+    padding-right: 12px;
+    background-image: none;
+  }
+  :where(html.lounge-active) .ff-field select::picker-icon {
+    color: var(--t-2);
+    transition: rotate 200ms var(--ease-out);
+  }
+  :where(html.lounge-active) .ff-field select:open::picker-icon {
+    rotate: 180deg;
+  }
+  :where(html.lounge-active) .ff-field select::picker(select) {
+    margin-top: 4px;
+    padding: 4px;
+    border: var(--kw) solid var(--keyline);
+    border-radius: 4px;
+    background: var(--paper-2);
+    color: var(--t-1);
+    box-shadow: 0 4px 0 var(--keyline);
+  }
+  :where(html.lounge-active) .ff-field select option {
+    min-height: 40px;
+    padding: 8px 10px;
+    border-radius: 3px;
+    font-size: 16px;
+    font-weight: 450;
+  }
+  :where(html.lounge-active) .ff-field select option:hover,
+  :where(html.lounge-active) .ff-field select option:focus-visible {
+    background: color-mix(in srgb, var(--t-1) 8%, transparent);
+    outline: none;
+  }
+  :where(html.lounge-active) .ff-field select option:checked {
+    background: var(--lamp);
+    color: var(--pat-ink);
+    font-weight: 650;
+  }
+}
+
+:where(html.lounge-active) .evd-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+:where(html.lounge-active) .evd-head > div {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+/* Centred under the full-width Register button above it. */
+:where(html.lounge-active) .evd-starts {
+  justify-self: center;
+  text-align: center;
 }
 
 :where(html.lounge-active) .evd-opt:has(input:focus-visible) {

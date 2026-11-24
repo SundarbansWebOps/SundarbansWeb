@@ -5,8 +5,13 @@
       <img :src="form.banner_url" :alt="form.banner_alt || ''" />
     </figure>
     <form class="evd-form" novalidate @submit.prevent="send">
-      <p class="gp-kicker">{{ kicker }}</p>
-      <h2 id="ff-h" class="evd-h">{{ form.group_label || form.title }}</h2>
+      <div class="evd-head">
+        <div>
+          <p class="gp-kicker">{{ kicker }}</p>
+          <h2 id="ff-h" class="evd-h">{{ form.group_label || form.title }}</h2>
+        </div>
+        <ShareLink :to="shareTo" />
+      </div>
       <p v-if="form.group_purpose || form.description" class="evd-desc">
         {{ form.group_purpose || form.description }}
       </p>
@@ -107,6 +112,7 @@ import { member } from './fixtures.js';
 import FormQuestions from './FormQuestions.vue';
 import FormSubmittedFiles from './FormSubmittedFiles.vue';
 import LoungeDialog from './LoungeDialog.vue';
+import ShareLink from './ShareLink.vue';
 import { fetchInvite, submitLoungeForm } from './session.js';
 
 const props = defineProps({
@@ -117,6 +123,12 @@ const props = defineProps({
 const emit = defineEmits(['close', 'done']);
 
 const dlg = ref(null);
+/* An event's registration opens in its event sheet; any other form opens in this dialog. */
+const shareTo = computed(() =>
+  props.form.event_id
+    ? { path: '/lounge', query: { view: 'events', register: props.form.event_id } }
+    : { path: '/lounge', query: { form: props.form.id } }
+);
 const done = ref(false);
 /* Submitted and not rejected: final. A rejected response can be filled in again. */
 const locked = computed(() => isLocked(props.form));

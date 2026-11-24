@@ -272,6 +272,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import CREST from '../../assets/crest.webp';
 import EventDetail from './EventDetail.vue';
 import {
@@ -518,4 +519,26 @@ function openEvent(e, step = 'info') {
   openStep.value = step;
   openId.value = e.id;
 }
+
+/* A shared form link (ShareLink): /lounge?view=events&register=<event id> opens that event's
+   register sheet. EventDetail falls back to the event's info when the member can't register. */
+const route = useRoute();
+const router = useRouter();
+watch(
+  () => route.query.register,
+  async (id) => {
+    if (typeof id !== 'string') return;
+    const query = { ...route.query };
+    delete query.register;
+    /* Drop the query before opening: the pop-up pushes its own history entry (layers.js). */
+    await router.replace({ path: '/lounge', query });
+    /* A link followed inside an open Lounge arrives as popstate; vue-router handles it in
+       microtasks before layers.js sees the same event, which would take it for Back and close
+       the new pop-up. Open on the next task, after that event is done. */
+    await new Promise((resolve) => setTimeout(resolve));
+    const e = eventById(id);
+    if (e) openEvent(e, 'form');
+  },
+  { immediate: true }
+);
 </script>
