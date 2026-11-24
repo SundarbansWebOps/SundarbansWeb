@@ -111,6 +111,8 @@
               </template>
               An admin adds you after checking.
             </p>
+            <!-- A registered admin never reaches the form, so the link is offered here. -->
+            <ShareLink v-if="regOpen" :to="shareTo" />
           </template>
           <template v-else-if="regOpen">
             <button type="button" class="gp-btn is-big is-block" @click="step = 'form'">
