@@ -101,3 +101,37 @@ test('an admin copies the register link from the form and it opens the register 
   await expect(page.locator('dialog[open]').getByText('Registering is final')).toBeVisible();
   await expect(page).not.toHaveURL(/register=/);
 });
+
+test('a registered admin still gets Copy link on the event', async ({ page }) => {
+  const registered = {
+    ...data,
+    list_lounge_events: data.list_lounge_events.map((e) => ({
+      ...e,
+      registration: { event_id: EVENT_ID },
+    })),
+    list_lounge_forms: data.list_lounge_forms.map((f) => ({ ...f, submitted: true })),
+  };
+  await mockSupabase(page, { as: 'head', data: registered });
+  await page.goto('/#/lounge?view=events');
+  await page.getByRole('tab', { name: /Mine/ }).click();
+  await page.getByRole('button', { name: title, exact: true }).first().click();
+  await expect(page.getByText("You're registered.")).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Copy link' })).toBeVisible();
+});
+
+test('a registered member gets no Copy link', async ({ page }) => {
+  const registered = {
+    ...data,
+    list_lounge_events: data.list_lounge_events.map((e) => ({
+      ...e,
+      registration: { event_id: EVENT_ID },
+    })),
+    list_lounge_forms: data.list_lounge_forms.map((f) => ({ ...f, submitted: true })),
+  };
+  await mockSupabase(page, { data: registered });
+  await page.goto('/#/lounge?view=events');
+  await page.getByRole('tab', { name: /Mine/ }).click();
+  await page.getByRole('button', { name: title, exact: true }).first().click();
+  await expect(page.getByText("You're registered.")).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Copy link' })).toHaveCount(0);
+});
