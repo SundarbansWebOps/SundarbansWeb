@@ -102,13 +102,11 @@ select throws_ok($$select public.save_lounge_form(jsonb_build_object('id','c1300
 select lives_ok($$select public.request_form_publish('c1300000-0000-4000-8000-0000000000f1')$$, 'Head asks again');
 reset role;
 
--- The Super Admin publishes it meanwhile; the stale request is a conflict.
+-- The Super Admin publishes it meanwhile; that publish closes the request (20261124180000).
 set local request.jwt.claims = '{"sub":"c1300000-0000-4000-8000-000000000001","role":"authenticated"}';
 update public.lounge_forms set published_at = now() where id = 'c1300000-0000-4000-8000-0000000000f1';
-set local role authenticated;
-set local request.jwt.claims = '{"sub":"c1300000-0000-4000-8000-000000000001","role":"authenticated"}';
-select throws_ok($$select public.approve_request(id) from public.approval_requests where target_form_id = 'c1300000-0000-4000-8000-0000000000f1' and status = 'pending'$$,
-  'PT409', null, 'approving a form already published is a conflict');
+select is((select count(*)::int from public.approval_requests where target_form_id = 'c1300000-0000-4000-8000-0000000000f1' and status = 'pending'),
+  0, 'a Super Admin publish leaves no stale request pending');
 reset role;
 
 select * from finish();
