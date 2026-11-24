@@ -293,7 +293,7 @@
             <li v-for="(field, i) in form.fields" :key="field._id" class="adm-card question">
               <div class="question-head">
                 <span class="adm-kicker">{{ blockKind(field) }}</span>
-                <span v-if="field.fixed" class="adm-note fixed-note">{{ FIXED_NOTE }}</span>
+                <span v-if="field.fixed" class="adm-note fixed-note">{{ fixedNote }}</span>
                 <div v-else class="adm-chips">
                   <button
                     type="button"
@@ -796,6 +796,7 @@ import { decodeFileAnswer, fetchFormFileBlob, uploadFormBanner } from '../../lib
 import { auth, errorText, isRc, isSuperAdmin } from '../../lib/auth.js';
 import {
   FORM_FIELD_TYPES,
+  EVENT_DEFAULTS,
   IITM_HOUSES,
   PANBS_DEFAULTS,
   cancelRequest,
@@ -841,7 +842,7 @@ const TYPE_LABEL = {
   textarea: 'Long text',
   email: 'Email',
   phone: 'Phone number',
-  select: 'Choose one',
+  select: 'Dropdown (choose one)',
   checkbox: 'Tick box',
   multiselect: 'Choose many',
 };
@@ -1153,14 +1154,23 @@ const toLocal = (iso) => {
 const fromLocal = (v) => (v ? new Date(v).toISOString() : null);
 const isChoice = (field) => field.type === 'select' || field.type === 'multiselect';
 const isQuestion = (field) => !['file', 'section', 'page_break'].includes(field.type);
+// An event-bound form shows the event's default questions as its first rows: PAN BS events
+// add the house row (spec 007), every other event gets name, email and phone.
+const formEvent = computed(() =>
+  form.value?.scope === 'event'
+    ? events.value.find((event) => event.id === form.value.event_id)
+    : null
+);
+const isPanbsForm = computed(() => !!formEvent.value?.panbs);
 const blockKind = (field) =>
-  field.fixed ? 'PAN BS default' : (BLOCK_KIND[field.type] ?? 'Question');
-const FIXED_NOTE = 'Asked first on every PAN BS registration. You can reword it.';
-// A form bound to a PAN BS event shows the registration's fixed questions as its first rows.
-const isPanbsForm = computed(
+  field.fixed
+    ? isPanbsForm.value
+      ? 'PAN BS default'
+      : 'Event default'
+    : (BLOCK_KIND[field.type] ?? 'Question');
+const fixedNote = computed(
   () =>
-    form.value?.scope === 'event' &&
-    !!events.value.find((event) => event.id === form.value.event_id)?.panbs
+    `Asked first on every ${isPanbsForm.value ? 'PAN BS' : 'event'} registration. You can reword it.`
 );
 const fixedCount = computed(() => form.value?.fields.filter((f) => f.fixed).length ?? 0);
 // Choice questions need at least one option, all different (the server needs one; duplicates
@@ -1335,21 +1345,24 @@ watch(
   }
 );
 
-// Put the PAN BS defaults at the top of a PAN BS form, reusing questions that already take the
-// name, email or phone. Leaving PAN BS drops the house row and turns the rest into ordinary questions.
+// Put the event's defaults at the top of an event form, reusing questions that already take the
+// name, email or phone. A non-PAN BS event drops the house row; leaving events entirely turns the
+// defaults into ordinary questions. An older non-PAN BS event form that never had defaults keeps
+// its questions as they are, so opening it does not reshuffle what students already answered.
 watch(
-  () => [form.value, isPanbsForm.value],
-  ([f, panbs]) => {
+  () => [form.value, formEvent.value, isPanbsForm.value],
+  ([f, event, panbs]) => {
     if (!f) return;
-    // Event list failed to load: leave the rows alone rather than drop a PAN BS form's defaults.
-    if (f.scope === 'event' && f.event_id && !events.value.some((e) => e.id === f.event_id)) return;
-    if (!panbs) {
-      f.fields = f.fields.filter((x) => !isHouseRow(x));
+    // Event list failed to load: leave the rows alone rather than drop the form's defaults.
+    if (f.scope === 'event' && f.event_id && !event) return;
+    if (!panbs) f.fields = f.fields.filter((x) => !isHouseRow(x));
+    if (!event) {
       for (const x of f.fields) x.fixed = '';
       return;
     }
+    if (!panbs && f.id && f.fields.length && !f.fields.some((x) => x.fixed)) return;
     const rest = [...f.fields];
-    const top = PANBS_DEFAULTS.map((d) => {
+    const top = (panbs ? PANBS_DEFAULTS : EVENT_DEFAULTS).map((d) => {
       const take = (pred) => {
         const i = rest.findIndex(pred);
         return i < 0 ? null : rest.splice(i, 1)[0];

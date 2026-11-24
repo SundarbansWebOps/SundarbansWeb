@@ -69,6 +69,9 @@ export const PANBS_DEFAULTS = [
     required: false,
   },
 ];
+// Every other event-bound form starts with the same questions minus the house (no house picker
+// outside PAN BS). Same `fixed` marking: organizers reword them but cannot remove or reorder them.
+export const EVENT_DEFAULTS = PANBS_DEFAULTS.filter((d) => d.fixed !== 'house');
 export const IITM_HOUSES = [
   'Bandipur',
   'Corbett',
