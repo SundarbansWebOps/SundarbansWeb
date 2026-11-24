@@ -116,10 +116,9 @@
             <button type="button" class="gp-btn is-big is-block" @click="step = 'form'">
               Register
             </button>
-            <p v-if="!early" class="evd-small">Starts {{ until(event.starts_at) }}.</p>
+            <p v-if="!early" class="evd-small evd-starts">Starts {{ until(event.starts_at) }}.</p>
           </template>
           <p v-else-if="!early" class="evd-plain">Registration is not open for this event.</p>
-          <ShareLink v-if="regOpen" :to="shareTo" />
         </div>
 
         <div v-else class="evd-act">
@@ -154,12 +153,16 @@
 
       <!-- Register: B's sheet -->
       <template v-else-if="step === 'form'">
-        <p class="evd-kick gp-kicker">Register</p>
-        <h2 id="ed-h" class="evd-h">{{ event.name }}</h2>
-        <p class="evd-sub">
-          <b>{{ spanOf(event) }}</b> · {{ until(event.starts_at) }}
-        </p>
-        <ShareLink class="evd-share" :to="shareTo" />
+        <div class="evd-head">
+          <div>
+            <p class="evd-kick gp-kicker">Register</p>
+            <h2 id="ed-h" class="evd-h">{{ event.name }}</h2>
+            <p class="evd-sub">
+              <b>{{ spanOf(event) }}</b> · {{ until(event.starts_at) }}
+            </p>
+          </div>
+          <ShareLink :to="shareTo" />
+        </div>
         <form class="evd-form" novalidate @submit.prevent="submit">
           <FormQuestions
             v-if="regForm"

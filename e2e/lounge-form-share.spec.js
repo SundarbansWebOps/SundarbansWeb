@@ -1,4 +1,4 @@
-// Any member can copy a link to an event's registration; following it opens that event's
+// An admin can copy a link to an event's registration; following it opens that event's
 // register sheet in the Lounge. Supabase is mocked.
 import { test, expect } from '@playwright/test';
 import { mockSupabase } from './supabase-mock.js';
@@ -52,23 +52,40 @@ const data = {
 
 test.beforeEach(({ page }) => page.emulateMedia({ reducedMotion: 'reduce' }));
 
-test('a member copies the register link and it opens the register sheet', async ({
+const openRegister = async (page) => {
+  await page.goto('/#/lounge?view=events');
+  await page.getByRole('tab', { name: /Upcoming/ }).click();
+  await page.getByRole('button', { name: title, exact: true }).first().click();
+};
+
+test('members register from a full-width button and see no Copy link', async ({ page }) => {
+  await mockSupabase(page, { data });
+  await openRegister(page);
+  const register = page.getByRole('button', { name: 'Register', exact: true });
+  const [r, s] = [await register.boundingBox(), await page.locator('.evd').boundingBox()];
+  expect(r.width).toBeGreaterThan(s.width * 0.7);
+  await expect(page.getByRole('button', { name: 'Copy link' })).toHaveCount(0);
+  await register.click();
+  await expect(page.locator('dialog[open]').getByText('Registering is final')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Copy link' })).toHaveCount(0);
+});
+
+test('an admin copies the register link from the form and it opens the register sheet', async ({
   page,
   context,
 }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  await mockSupabase(page, { data });
-  await page.goto('/#/lounge?view=events');
-  await page.getByRole('tab', { name: /Upcoming/ }).click();
-  await page.getByRole('button', { name: title, exact: true }).first().click();
+  await mockSupabase(page, { as: 'rc', data });
+  await openRegister(page);
+  // Not on the event's first page, only inside the form, beside the title.
+  await expect(page.getByRole('button', { name: 'Copy link' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Register', exact: true }).click();
+  const copy = page.getByRole('button', { name: 'Copy link' });
+  const [c, h] = [await copy.boundingBox(), await page.locator('#ed-h').boundingBox()];
+  expect(c.x).toBeGreaterThan(h.x + h.width);
+  await page.screenshot({ path: 'test-results/share/admin-form.png' });
 
-  const register = page.getByRole('button', { name: 'Register', exact: true });
-  const sheet = page.locator('.evd');
-  const [r, s] = [await register.boundingBox(), await sheet.boundingBox()];
-  expect(r.width).toBeGreaterThan(s.width * 0.7);
-  await page.screenshot({ path: 'test-results/share/info.png' });
-
-  await page.getByRole('button', { name: 'Copy link' }).click();
+  await copy.click();
   await expect(page.getByRole('button', { name: 'Link copied' })).toBeVisible();
   const url = await page.evaluate(() => navigator.clipboard.readText());
   expect(url).toContain(`#/lounge?view=events&register=${EVENT_ID}`);
@@ -77,14 +94,10 @@ test('a member copies the register link and it opens the register sheet', async 
   await page.goto('/#/lounge');
   await expect(page.getByRole('link', { name: 'Events', exact: true })).toBeVisible();
   await page.goto(url);
-  const sheet2 = page.locator('dialog[open]');
-  await expect(sheet2.getByText('Registering is final')).toBeVisible();
+  await expect(page.locator('dialog[open]').getByText('Registering is final')).toBeVisible();
   await expect(page).not.toHaveURL(/register=/);
   await page.goto('about:blank');
   await page.goto(url);
   await expect(page.locator('dialog[open]').getByText('Registering is final')).toBeVisible();
   await expect(page).not.toHaveURL(/register=/);
-  await page.getByText('Yes', { exact: true }).click();
-  await page.getByLabel(/Level/).focus();
-  await page.screenshot({ path: 'test-results/share/form.png' });
 });

@@ -5,9 +5,13 @@
       <img :src="form.banner_url" :alt="form.banner_alt || ''" />
     </figure>
     <form class="evd-form" novalidate @submit.prevent="send">
-      <p class="gp-kicker">{{ kicker }}</p>
-      <h2 id="ff-h" class="evd-h">{{ form.group_label || form.title }}</h2>
-      <ShareLink class="evd-share" :to="shareTo" />
+      <div class="evd-head">
+        <div>
+          <p class="gp-kicker">{{ kicker }}</p>
+          <h2 id="ff-h" class="evd-h">{{ form.group_label || form.title }}</h2>
+        </div>
+        <ShareLink :to="shareTo" />
+      </div>
       <p v-if="form.group_purpose || form.description" class="evd-desc">
         {{ form.group_purpose || form.description }}
       </p>

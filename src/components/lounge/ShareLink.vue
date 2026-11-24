@@ -1,7 +1,7 @@
-<!-- Copies a Lounge link that opens this form for whoever follows it (after sign-in). Shown to
-     every member, admins included, so anyone can pass a form on. -->
+<!-- Copies a Lounge link that opens this form for whoever follows it (after sign-in). Only admins
+     and Super Admins see it: they hand the link to members. -->
 <template>
-  <span class="share">
+  <span v-if="canShare" class="share">
     <button type="button" class="gp-btn is-ghost share-btn" @click="copy">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path
@@ -28,6 +28,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { auth } from '../../lib/auth.js';
 
 const props = defineProps({
   /* Route location inside the app, e.g. { path: '/lounge', query: { form: id } }. */
@@ -35,6 +36,7 @@ const props = defineProps({
 });
 
 const router = useRouter();
+const canShare = computed(() => ['admin', 'super_admin'].includes(auth.dashboard?.role));
 const url = computed(() => new URL(router.resolve(props.to).href, location.href).href);
 const state = ref('');
 let timer = 0;

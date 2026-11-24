@@ -1411,9 +1411,22 @@
   }
 }
 
-:where(html.lounge-active) .evd-share {
-  justify-self: start;
-  margin-top: 10px;
+:where(html.lounge-active) .evd-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+:where(html.lounge-active) .evd-head > div {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+/* Centred under the full-width Register button above it. */
+:where(html.lounge-active) .evd-starts {
+  justify-self: center;
+  text-align: center;
 }
 
 :where(html.lounge-active) .evd-opt:has(input:focus-visible) {
